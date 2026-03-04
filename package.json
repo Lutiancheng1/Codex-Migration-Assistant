@@ -1,0 +1,100 @@
+{
+  "name": "codex-migration-assistant",
+  "displayName": "Codex 迁移助手",
+  "description": "在 macOS 与 Windows 间可视化迁移 Codex 数据（支持 Codex App 与 VS Code 扩展）",
+  "version": "0.1.0",
+  "publisher": "local",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other",
+    "Productivity"
+  ],
+  "keywords": [
+    "codex",
+    "migration",
+    "backup",
+    "import",
+    "export",
+    "迁移",
+    "备份"
+  ],
+  "activationEvents": [
+    "onView:codexMigration.sidebarView",
+    "onCommand:codexMigration.open",
+    "onCommand:codexMigration.export",
+    "onCommand:codexMigration.previewImport",
+    "onCommand:codexMigration.import"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "codexMigration.open",
+        "title": "Codex 迁移: 打开面板"
+      },
+      {
+        "command": "codexMigration.export",
+        "title": "Codex 迁移: 导出"
+      },
+      {
+        "command": "codexMigration.previewImport",
+        "title": "Codex 迁移: 预演导入"
+      },
+      {
+        "command": "codexMigration.import",
+        "title": "Codex 迁移: 导入"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codexMigration",
+          "title": "Codex迁移",
+          "icon": "media/codex-migration.svg"
+        }
+      ]
+    },
+    "views": {
+      "codexMigration": [
+        {
+          "id": "codexMigration.sidebarView",
+          "name": "迁移助手",
+          "type": "webview"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "clean": "rm -rf dist dist-webview",
+    "build:ext": "tsc -p tsconfig.json",
+    "build:webview": "vite build --config webview/vite.config.ts",
+    "build": "npm run build:webview && npm run build:ext",
+    "package:vsix": "npm run build && npx @vscode/vsce package",
+    "package:vsix:node20": "bash -lc 'eval \"$(fnm env)\" && fnm use 20 >/dev/null && npm run build && npx @vscode/vsce package'",
+    "watch:ext": "tsc -w -p tsconfig.json",
+    "watch:webview": "vite build --watch --config webview/vite.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p webview/tsconfig.json --noEmit",
+    "test:unit": "npm run build:ext && node --test test/process-guard.test.mjs"
+  },
+  "dependencies": {
+    "yauzl": "^3.2.0",
+    "yazl": "^3.3.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.19",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@types/vscode": "^1.90.0",
+    "@types/yauzl": "^2.10.3",
+    "@types/yazl": "^2.4.5",
+    "@vitejs/plugin-react": "^4.4.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.8.2",
+    "vite": "^5.4.14"
+  }
+}

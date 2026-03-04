@@ -1,0 +1,408 @@
+:root {
+  --bg: radial-gradient(circle at 20% 15%, rgba(0, 161, 214, 0.24) 0, transparent 45%), radial-gradient(circle at 85% 10%, rgba(255, 167, 38, 0.2) 0, transparent 40%), var(--vscode-editor-background);
+  --fg: var(--vscode-editor-foreground);
+  --muted: color-mix(in srgb, var(--fg) 70%, transparent);
+  --card: color-mix(in srgb, var(--vscode-sideBar-background) 88%, transparent);
+  --line: color-mix(in srgb, var(--fg) 15%, transparent);
+  --accent: #ff8f00;
+  --accent-2: #0288d1;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  margin: 0;
+  color: var(--fg);
+  background: var(--bg);
+  font: 13px/1.5 "Avenir Next", "Segoe UI", "Noto Sans SC", sans-serif;
+}
+
+main {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+main > * {
+  min-width: 0;
+}
+
+header h1 {
+  margin: 0;
+  letter-spacing: 0.02em;
+}
+
+header p {
+  margin: 2px 0 0;
+  color: var(--muted);
+}
+
+.card {
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: 14px;
+  padding: 12px;
+  backdrop-filter: blur(5px);
+  min-width: 0;
+}
+
+.hero {
+  border-left: none;
+}
+
+.risk {
+  border-left: none;
+}
+
+h2, h3 {
+  margin: 0 0 8px;
+}
+
+p {
+  margin: 0;
+}
+
+.grid {
+  display: grid;
+  gap: 10px;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+.row.actions {
+  margin-top: 8px;
+}
+
+.account-create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+}
+
+.account-create-input {
+  min-width: 0;
+  width: 100%;
+}
+
+.account-create-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  line-height: 1.35;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+input,
+select,
+button {
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  color: var(--fg);
+  padding: 8px;
+}
+
+input,
+select {
+  width: 100%;
+}
+
+input[type="checkbox"] {
+  width: auto;
+  padding: 0;
+  margin: 0;
+  inline-size: 16px;
+  block-size: 16px;
+  accent-color: var(--accent);
+}
+
+.check-row input[type="checkbox"] {
+  margin-top: 0;
+  flex: 0 0 auto;
+}
+
+.check-text {
+  display: block;
+  padding-right: 8px;
+}
+
+button {
+  cursor: pointer;
+}
+
+button.primary {
+  background: linear-gradient(120deg, var(--accent), #ffb300);
+  color: #1a1a1a;
+  border: none;
+  font-weight: 700;
+}
+
+button.danger {
+  border-color: #b94646;
+  color: #ffb3b3;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.tabs .active {
+  background: linear-gradient(120deg, var(--accent-2), #29b6f6);
+  color: #0b1d29;
+  border: none;
+  font-weight: 700;
+}
+
+.progress-track {
+  margin: 6px 0;
+  height: 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 12%, transparent);
+  overflow: hidden;
+}
+
+.progress-value {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-2), var(--accent));
+  transition: width 200ms ease;
+}
+
+pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.log-pre {
+  max-height: 220px;
+  overflow: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  border-bottom: 1px solid var(--line);
+  padding: 6px;
+  text-align: left;
+}
+
+.error {
+  color: #ff6f61;
+}
+
+.warning {
+  color: #ffb300;
+}
+
+.accounts-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  position: relative;
+}
+
+.accounts-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: max-content;
+  min-width: 840px;
+}
+
+.accounts-table th,
+.accounts-table td {
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+.accounts-actions-col {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: color-mix(in srgb, var(--card) 96%, transparent);
+  min-width: 56px;
+  width: 56px;
+  max-width: 56px;
+  box-shadow: -8px 0 12px color-mix(in srgb, var(--vscode-editor-background) 75%, transparent);
+  text-align: right;
+}
+
+.accounts-table thead .accounts-actions-col {
+  z-index: 3;
+}
+
+.account-actions-menu {
+  position: relative;
+  display: flex;
+  justify-content: flex-end;
+  overflow: visible;
+}
+
+.action-trigger {
+  min-width: 40px;
+  width: 40px;
+  text-align: center;
+  padding: 6px 0;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.action-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  width: 148px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--vscode-sideBar-background) 95%, transparent);
+  box-shadow: 0 10px 24px color-mix(in srgb, #000 65%, transparent);
+  z-index: 30;
+  display: grid;
+  gap: 6px;
+}
+
+.action-menu-panel button {
+  width: 100%;
+  white-space: nowrap;
+}
+
+.action-delete-confirm {
+  display: grid;
+  gap: 6px;
+}
+
+.import-zip-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+}
+
+.import-zip-row button {
+  white-space: nowrap;
+}
+
+.import-toggle-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.import-action-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.import-action-row button {
+  width: 100%;
+}
+
+.result-grid {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.result-grid article {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--card) 94%, transparent);
+}
+
+.result-grid h4 {
+  margin: 0 0 6px;
+}
+
+.result-grid ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.warnings {
+  margin-top: 10px;
+  border-top: 1px dashed var(--line);
+  padding-top: 8px;
+}
+
+.warnings h4 {
+  margin: 0 0 4px;
+}
+
+.warnings ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+@media (max-width: 700px) {
+  main {
+    padding: 8px;
+  }
+
+  .row {
+    flex-direction: column;
+  }
+
+  .account-create,
+  .account-create-actions {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .account-create-input {
+    max-width: none;
+  }
+
+  .import-zip-row,
+  .import-toggle-row,
+  .import-action-row {
+    grid-template-columns: 1fr;
+  }
+}
