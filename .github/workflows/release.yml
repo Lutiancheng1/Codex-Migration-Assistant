@@ -51,5 +51,6 @@ jobs:
         with:
           tag_name: v${{ env.VERSION }}
           name: Release v${{ env.VERSION }}
+          body: ${{ github.event.head_commit.message }}
           files: "*.vsix"
           generate_release_notes: true
