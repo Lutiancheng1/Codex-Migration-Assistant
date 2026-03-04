@@ -18,8 +18,7 @@ type Props = {
 export function ImportWizard(props: Props): JSX.Element {
   const canRun = props.backupZip.trim().length > 0;
   return (
-    <section className="card">
-      <h3>导入</h3>
+    <section>
       <div className="grid">
         <label>
           Codex 目录
@@ -48,7 +47,7 @@ export function ImportWizard(props: Props): JSX.Element {
             onChange={(e) => props.onChange("importProfileName", e.target.value)}
           />
         </label>
-        <div className="import-toggle-row">
+        <div className="toggle-row">
           <label className="check-row">
             <span className="check-text">替换本地 state 文件</span>
             <input
@@ -70,7 +69,7 @@ export function ImportWizard(props: Props): JSX.Element {
         </div>
       </div>
       {!canRun ? <p className="error">请先选择备份 ZIP 文件。</p> : null}
-      <div className="row actions import-action-row">
+      <div className="action-row">
         <button onClick={props.onPreview} disabled={!canRun}>预演导入</button>
         <button onClick={props.onRunImportToNewProfile} disabled={!canRun || props.importProfileName.trim().length === 0}>导入为新账号</button>
         <button className="primary" onClick={props.onRunImport} disabled={!canRun}>执行导入</button>

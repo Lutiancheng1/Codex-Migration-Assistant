@@ -341,7 +341,22 @@ async function ensureBootstrapped(paths: Paths, metadata: ProfilesMetadata): Pro
   const id = await allocateProfileId(metadata, paths.profilesRoot, "primary");
   const targetPath = path.join(paths.profilesRoot, id);
   const preferredName = await resolvePreferredProfileName(paths.codexHome, "主账号");
-  await fs.rename(paths.codexHome, targetPath);
+  try {
+    await fs.rename(paths.codexHome, targetPath);
+  } catch (err: any) {
+    if (err.code === "EPERM" || err.code === "EBUSY") {
+      const busy = await detectExternalBusyProcesses([paths.codexHome]);
+      const busyMsg = busy.length > 0 ? `占用进程: ${formatBusyProcessSummary(busy)}` : "未抓取到具体占用进程 PID 的线索。";
+      const wrapper = new Error(`首次初始化多账号关联目录失败 (系统锁定无法重命名 .codex)。\n原因：权限不足或文件被活动进程（如原始 Codex 扩充端大文件读写）牢牢锁住。\n请尝试：点击关闭其他应用释放，或者在 VS Code 中暂时禁用 Codex 后重装此环境。\n(${busyMsg})`) as Error & {
+        code: ErrorCode;
+        details: Record<string, unknown>;
+      };
+      wrapper.code = ErrorCode.FileLocked;
+      wrapper.details = { busy };
+      throw wrapper;
+    }
+    throw err;
+  }
   await switchCodexLink(paths.codexHome, targetPath);
   metadata.profiles.push({
     id,

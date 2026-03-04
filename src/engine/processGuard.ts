@@ -114,7 +114,7 @@ async function detectWindowsBusyProcesses(paths: string[]): Promise<BusyProcess[
   const selfPids = new Set<number>([process.pid, process.ppid].filter((item) => item > 0));
 
   const script = [
-    "$ErrorActionPreference = 'SilentlyContinue'",
+    "$ErrorActionPreference = 'SilentlyContinue';",
     "Get-CimInstance Win32_Process |",
     "Select-Object ProcessId,Name,CommandLine |",
     "ConvertTo-Json -Compress"
@@ -131,13 +131,17 @@ async function detectWindowsBusyProcesses(paths: string[]): Promise<BusyProcess[
         continue;
       }
       const cmdline = String(row?.CommandLine ?? "").toLowerCase();
-      if (!cmdline) {
+      const processName = String(row?.Name ?? "").toLowerCase();
+
+      // 如果有详细命令行，查看是否命中目标目录；或者看是否名字属于黑名单
+      const isTargetMatch = cmdline && targets.some((target) => cmdline.includes(target));
+      const knownBlockers = ["codex.exe", "codex-windows-sandbox.exe", "codex-app.exe"];
+      const isKnownBlocker = knownBlockers.some((k) => processName.includes(k) || cmdline.includes(k));
+
+      if (!isTargetMatch && !isKnownBlocker) {
         continue;
       }
-      if (!targets.some((target) => cmdline.includes(target))) {
-        continue;
-      }
-      out.push({ pid, command: String(row?.Name ?? "process") });
+      out.push({ pid, command: processName || "process" });
     }
     const dedup = new Map<number, BusyProcess>();
     for (const item of out) {
@@ -173,4 +177,28 @@ export function formatBusyProcessSummary(processes: BusyProcess[]): string {
     return "";
   }
   return processes.slice(0, 8).map((item) => `${item.command}(${item.pid})`).join(", ");
+}
+
+export async function forceKillProcesses(pids: number[]): Promise<{ killedCount: number }> {
+  let killedCount = 0;
+  for (const pid of pids) {
+    if (!Number.isFinite(pid) || pid <= 0) {
+      continue;
+    }
+    // 不要杀向自己以及父进程，防止插件自毁
+    if (pid === process.pid || pid === process.ppid) {
+      continue;
+    }
+    try {
+      process.kill(pid, "SIGKILL");
+      killedCount += 1;
+    } catch {
+      // ignore
+    }
+  }
+  // 给杀伤留出退散和系统文件锁释放时间
+  if (killedCount > 0) {
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  return { killedCount };
 }

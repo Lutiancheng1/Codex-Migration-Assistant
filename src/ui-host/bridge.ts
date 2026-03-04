@@ -8,6 +8,7 @@ import { runImport } from "../engine/importer";
 import { activateProfile, createProfile, deleteProfile, getProfilesSnapshot, refreshProfilesUsage, type ProfilesSnapshot } from "../engine/profiles";
 import { writeReportBundle } from "../engine/report";
 import { previewImport } from "../engine/scanner";
+import { forceKillProcesses } from "../engine/processGuard";
 import { asAppError, ErrorCode } from "../protocol/errors";
 import type { RequestMessage, ResponseMessage } from "../protocol/messages";
 import { requestSchema } from "../protocol/schema";
@@ -409,6 +410,14 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
         emitTaskLog(target.webview, "info", `已导入到新账号槽位 ${created.name}。如需使用，请在账号页切换到该槽位。`);
         const finalSnapshot = await getProfilesSnapshot(codexHome);
         await emitSnapshot(target.webview, finalSnapshot);
+        return;
+      }
+
+      if (msg.type === "KILL_PROCESSES") {
+        emitTaskLog(target.webview, "info", `即将尝试结束 ${msg.payload.pids.length} 个占用进程...`);
+        const result = await forceKillProcesses(msg.payload.pids);
+        emitTaskLog(target.webview, "info", `成功结束占用进程数: ${result.killedCount}`);
+        send(target.webview, { type: "TASK_RESULT", payload: { action: "killProcesses", data: result } });
         return;
       }
     } catch (err) {

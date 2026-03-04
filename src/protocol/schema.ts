@@ -98,6 +98,12 @@ export const requestSchema = z.discriminatedUnion("type", [
       mode: z.enum(["core", "enhanced"]),
       profileName: z.string().min(1)
     })
+  }),
+  z.object({
+    type: z.literal("KILL_PROCESSES"),
+    payload: z.object({
+      pids: z.array(z.number())
+    })
   })
 ]);
 

@@ -41,51 +41,52 @@ export type RequestMessage =
   | { type: "PICK_DEFAULT_BACKUP"; payload?: { directory?: string } }
   | { type: "CREATE_PROFILE"; payload: { codexHome?: string; name: string } }
   | {
-      type: "ACTIVATE_PROFILE";
-      payload: { codexHome?: string; profileId: string; backupCurrent: boolean; mergeFromCurrentCore?: boolean };
-    }
+    type: "ACTIVATE_PROFILE";
+    payload: { codexHome?: string; profileId: string; backupCurrent: boolean; mergeFromCurrentCore?: boolean };
+  }
   | { type: "DELETE_PROFILE"; payload: { codexHome?: string; profileId: string } }
   | {
-      type: "START_EXPORT";
-      payload: {
-        codexHome?: string;
-        outputDir: string;
-        includeState: boolean;
-        includeAuth: boolean;
-        mode: MigrationMode;
-      };
-    }
-  | {
-      type: "START_PREVIEW_IMPORT";
-      payload: {
-        codexHome?: string;
-        backupZip: string;
-        replaceState: boolean;
-        importAuth: boolean;
-        mode: MigrationMode;
-      };
-    }
-  | {
-      type: "START_IMPORT";
-      payload: {
-        codexHome?: string;
-        backupZip: string;
-        replaceState: boolean;
-        importAuth: boolean;
-        mode: MigrationMode;
-      };
-    }
-  | {
-      type: "START_IMPORT_TO_NEW_PROFILE";
-      payload: {
-        codexHome?: string;
-        backupZip: string;
-        replaceState: boolean;
-        importAuth: boolean;
-        mode: MigrationMode;
-        profileName: string;
-      };
+    type: "START_EXPORT";
+    payload: {
+      codexHome?: string;
+      outputDir: string;
+      includeState: boolean;
+      includeAuth: boolean;
+      mode: MigrationMode;
     };
+  }
+  | {
+    type: "START_PREVIEW_IMPORT";
+    payload: {
+      codexHome?: string;
+      backupZip: string;
+      replaceState: boolean;
+      importAuth: boolean;
+      mode: MigrationMode;
+    };
+  }
+  | {
+    type: "START_IMPORT";
+    payload: {
+      codexHome?: string;
+      backupZip: string;
+      replaceState: boolean;
+      importAuth: boolean;
+      mode: MigrationMode;
+    };
+  }
+  | {
+    type: "START_IMPORT_TO_NEW_PROFILE";
+    payload: {
+      codexHome?: string;
+      backupZip: string;
+      replaceState: boolean;
+      importAuth: boolean;
+      mode: MigrationMode;
+      profileName: string;
+    };
+  }
+  | { type: "KILL_PROCESSES"; payload: { pids: number[] } };
 
 export type Stats = {
   newCount: number;
@@ -138,24 +139,24 @@ export type ImportResult = {
 
 export type ResponseMessage =
   | {
-      type: "STATE_SNAPSHOT";
-      payload: {
-        codexHome: string;
-        platform: string;
-        defaultOutputDir: string;
-        profilesRoot: string;
-        activeProfileId?: string;
-        profiles: ProfileSummary[];
-      };
-    }
+    type: "STATE_SNAPSHOT";
+    payload: {
+      codexHome: string;
+      platform: string;
+      defaultOutputDir: string;
+      profilesRoot: string;
+      activeProfileId?: string;
+      profiles: ProfileSummary[];
+    };
+  }
   | { type: "PATH_PICKED"; payload: { path?: string } }
   | { type: "TASK_PROGRESS"; payload: { step: string; percent: number; message: string } }
   | { type: "TASK_LOG"; payload: { level: "info" | "warn" | "error"; message: string } }
   | {
-      type: "TASK_RESULT";
-      payload: {
-        action: "export" | "previewImport" | "import";
-        data: ExportResult | PreviewResult | ImportResult;
-      };
-    }
+    type: "TASK_RESULT";
+    payload: {
+      action: "export" | "previewImport" | "import" | "killProcesses";
+      data: ExportResult | PreviewResult | ImportResult | { killedCount: number };
+    };
+  }
   | { type: "TASK_ERROR"; payload: { code: string; message: string; details?: Record<string, unknown> } };

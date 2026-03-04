@@ -88,6 +88,13 @@ export type StartImportToNewProfileRequest = {
   };
 };
 
+export type KillProcessesRequest = {
+  type: "KILL_PROCESSES";
+  payload: {
+    pids: number[];
+  };
+};
+
 export type RequestMessage =
   | InitRequest
   | RefreshProfilesRequest
@@ -100,7 +107,8 @@ export type RequestMessage =
   | StartExportRequest
   | StartPreviewImportRequest
   | StartImportRequest
-  | StartImportToNewProfileRequest;
+  | StartImportToNewProfileRequest
+  | KillProcessesRequest;
 
 export type Stats = {
   newCount: number;
@@ -190,8 +198,8 @@ export type TaskLogEvent = {
 export type TaskResultEvent = {
   type: "TASK_RESULT";
   payload: {
-    action: "export" | "previewImport" | "import";
-    data: ExportResult | PreviewResult | ImportResult;
+    action: "export" | "previewImport" | "import" | "killProcesses";
+    data: ExportResult | PreviewResult | ImportResult | { killedCount: number };
   };
 };
 

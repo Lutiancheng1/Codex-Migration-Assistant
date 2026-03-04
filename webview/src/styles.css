@@ -38,7 +38,7 @@ main {
   gap: 12px;
 }
 
-main > * {
+main>* {
   min-width: 0;
 }
 
@@ -49,7 +49,103 @@ header h1 {
 
 header p {
   margin: 2px 0 0;
-  color: var(--muted);
+  color: var(--focus-border);
+}
+
+/* =========================================
+   模态框 (Modal) / Process Lock Dialog
+   ========================================= */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.modal-content {
+  background-color: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  border: 1px solid var(--vscode-panel-border);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  padding: 24px;
+  border-radius: 6px;
+  width: 480px;
+  max-width: 90vw;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.modal-title.warning-text {
+  color: var(--vscode-charts-yellow);
+}
+
+.busy-process-list {
+  background-color: var(--vscode-textCodeBlock-background, rgba(0, 0, 0, 0.2));
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+  padding: 8px;
+  max-height: 120px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.busy-process-item {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 13px;
+  padding: 4px;
+  background-color: var(--vscode-list-hoverBackground);
+  border-radius: 3px;
+}
+
+.process-name {
+  font-weight: 600;
+  color: var(--vscode-textLink-foreground);
+}
+
+.process-pid {
+  color: var(--vscode-descriptionForeground);
+}
+
+.modal-tip {
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.modal-actions button.secondary {
+  background-color: transparent;
+  border: 1px solid var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-foreground);
+}
+
+.modal-actions button.danger {
+  background-color: var(--vscode-charts-red);
+  color: #fff;
 }
 
 .card {
@@ -69,7 +165,8 @@ header p {
   border-left: none;
 }
 
-h2, h3 {
+h2,
+h3 {
   margin: 0 0 8px;
 }
 
@@ -96,6 +193,7 @@ p {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
   gap: 8px;
+  margin-bottom: 12px;
 }
 
 .account-create-input {
@@ -171,6 +269,8 @@ button.primary {
   color: #1a1a1a;
   border: none;
   font-weight: 700;
+  margin-top: 8px;
+  /* 增加与上方选项的默认间距 */
 }
 
 button.danger {
@@ -178,16 +278,86 @@ button.danger {
   color: #ffb3b3;
 }
 
-.tabs {
+/* =========================================
+   手风琴面板 (Accordion)
+   ========================================= */
+.accordion-container {
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.tabs .active {
-  background: linear-gradient(120deg, var(--accent-2), #29b6f6);
-  color: #0b1d29;
-  border: none;
-  font-weight: 700;
+.accordion-card {
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: 14px;
+  backdrop-filter: blur(5px);
+  min-width: 0;
+  overflow: visible;
+  /* 让内部阴影/弹窗能出来 */
+  transition: border-color 0.2s;
+}
+
+.accordion-card.active {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.accordion-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
+  border-radius: 14px;
+}
+
+.accordion-header h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.accordion-icon {
+  font-size: 12px;
+  color: var(--muted);
+  transition: color 0.2s, transform 0.2s;
+}
+
+.accordion-card.active .accordion-icon {
+  color: var(--accent);
+}
+
+.accordion-header:hover {
+  background: color-mix(in srgb, var(--vscode-editor-foreground) 4%, transparent);
+}
+
+.accordion-body {
+  padding: 0 16px 16px 16px;
+  animation: slideFadeIn 0.25s ease-out;
+}
+
+@keyframes slideFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.status-footer-area {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 1px dashed var(--line);
+  padding-top: 16px;
 }
 
 .progress-track {
@@ -220,7 +390,8 @@ table {
   border-collapse: collapse;
 }
 
-th, td {
+th,
+td {
   border-bottom: 1px solid var(--line);
   padding: 6px;
   text-align: left;
@@ -239,9 +410,12 @@ th, td {
   max-width: 100%;
   overflow-x: auto;
   overflow-y: visible;
+  /* 必须 visible，否则下拉弹窗会被盖住/截断 */
   border: 1px solid var(--line);
   border-radius: 10px;
   position: relative;
+  /* 为弹窗预留底部空间（如果表格行很少导致往下弹窗时被包围卡住） */
+  padding-bottom: 24px;
 }
 
 .accounts-table {
@@ -264,7 +438,6 @@ th, td {
   background: color-mix(in srgb, var(--card) 96%, transparent);
   min-width: 56px;
   width: 56px;
-  max-width: 56px;
   box-shadow: -8px 0 12px color-mix(in srgb, var(--vscode-editor-background) 75%, transparent);
   text-align: right;
 }
@@ -291,15 +464,20 @@ th, td {
 
 .action-menu-panel {
   position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
+  right: 100%;
+  /* 向左侧弹出，避免出滚动条 */
+  top: 0;
+  margin-right: 8px;
+  /* 和三个点的间距 */
   width: 148px;
   padding: 6px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--vscode-sideBar-background) 95%, transparent);
+  background: color-mix(in srgb, var(--card) 98%, transparent);
+  backdrop-filter: blur(8px);
   box-shadow: 0 10px 24px color-mix(in srgb, #000 65%, transparent);
-  z-index: 30;
+  z-index: 999;
+  /* 提高层级 */
   display: grid;
   gap: 6px;
 }
@@ -324,21 +502,30 @@ th, td {
   white-space: nowrap;
 }
 
-.import-toggle-row {
+.toggle-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
-.import-action-row {
+.action-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+  margin-top: 8px;
 }
 
-.import-action-row button {
+.action-row button {
   width: 100%;
 }
+
+.file-pick-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
 
 .result-grid {
   margin-top: 10px;
@@ -383,10 +570,6 @@ th, td {
     padding: 8px;
   }
 
-  .row {
-    flex-direction: column;
-  }
-
   .account-create,
   .account-create-actions {
     display: flex;
@@ -398,11 +581,5 @@ th, td {
 
   .account-create-input {
     max-width: none;
-  }
-
-  .import-zip-row,
-  .import-toggle-row,
-  .import-action-row {
-    grid-template-columns: 1fr;
   }
 }

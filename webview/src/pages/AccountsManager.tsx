@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ProfileSummary, ProfileUsageWindow } from "../api/types";
 
 type Props = {
@@ -39,6 +40,32 @@ export function AccountsManager(props: Props): JSX.Element {
   const canCreate = props.newProfileName.trim().length > 0;
   const [pendingDeleteProfileId, setPendingDeleteProfileId] = useState<string>();
   const [openActionProfileId, setOpenActionProfileId] = useState<string>();
+  const [actionAnchorRect, setActionAnchorRect] = useState<DOMRect | undefined>();
+  const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(5 * 60 * 1000);
+  const initialRefreshDone = React.useRef(false);
+
+  // 初次加载有 profile 时，自动查一遍所有人
+  useEffect(() => {
+    if (props.profiles.length > 0 && !initialRefreshDone.current) {
+      initialRefreshDone.current = true;
+      props.profiles.forEach((p) => {
+        props.onRefreshUsage(p.id);
+      });
+    }
+  }, [props.profiles, props.onRefreshUsage]);
+
+  // 定时轮询
+  useEffect(() => {
+    if (autoRefreshInterval <= 0) {
+      return;
+    }
+    const timer = setInterval(() => {
+      props.profiles.forEach((p) => {
+        props.onRefreshUsage(p.id);
+      });
+    }, autoRefreshInterval);
+    return () => clearInterval(timer);
+  }, [autoRefreshInterval, props.profiles, props.onRefreshUsage]);
 
   useEffect(() => {
     if (!openActionProfileId) {
@@ -56,13 +83,27 @@ export function AccountsManager(props: Props): JSX.Element {
       setOpenActionProfileId(undefined);
       setPendingDeleteProfileId(undefined);
     };
+
+    // 监听滚动与缩放，关闭弹窗防止错位
+    const handleScrollOrResize = () => {
+      setOpenActionProfileId(undefined);
+      setPendingDeleteProfileId(undefined);
+      setActionAnchorRect(undefined);
+    };
+
     document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
+    window.addEventListener("scroll", handleScrollOrResize, true); // 捕获阶段，能拦截内部表格容器滚动
+    window.addEventListener("resize", handleScrollOrResize);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("scroll", handleScrollOrResize, true);
+      window.removeEventListener("resize", handleScrollOrResize);
+    };
   }, [openActionProfileId]);
 
   return (
-    <section className="card">
-      <h3>账号切换</h3>
+    <section>
       <div className="grid">
         <p><strong>账号目录根：</strong> {props.profilesRoot || "未初始化"}</p>
         <p><strong>当前激活：</strong> {activeProfile ? `${activeProfile.name} (${activeProfile.id})` : "未识别"}</p>
@@ -71,7 +112,7 @@ export function AccountsManager(props: Props): JSX.Element {
         ) : null}
       </div>
 
-      <div className="account-create">
+      <div className="account-create" style={{ marginTop: "16px" }}>
         <input
           className="account-create-input"
           placeholder="输入新账号名称，例如：工作账号 / 个人账号"
@@ -85,15 +126,33 @@ export function AccountsManager(props: Props): JSX.Element {
         </div>
       </div>
 
-      <label className="check-row">
-        <span className="check-text">切换前自动备份当前账号（不含 auth）</span>
-        <input
-          type="checkbox"
-          checked={props.backupBeforeSwitch}
-          onChange={(e) => props.onChange("backupBeforeSwitch", e.target.checked)}
-          aria-label="切换前自动备份当前账号"
-        />
-      </label>
+      <div style={{ marginBottom: "12px" }}>
+        <label className="check-row">
+          <span className="check-text">切换前自动备份当前账号（不含 auth）</span>
+          <input
+            type="checkbox"
+            checked={props.backupBeforeSwitch}
+            onChange={(e) => props.onChange("backupBeforeSwitch", e.target.checked)}
+            aria-label="切换前自动备份当前账号"
+          />
+        </label>
+      </div>
+
+      <div style={{ marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+        <span className="check-text">用量自动刷新频率:</span>
+        <select
+          value={autoRefreshInterval}
+          onChange={(e) => setAutoRefreshInterval(Number(e.target.value))}
+          style={{ width: "auto" }}
+        >
+          <option value={0}>禁用</option>
+          <option value={1 * 60 * 1000}>每 1 分钟</option>
+          <option value={3 * 60 * 1000}>每 3 分钟</option>
+          <option value={5 * 60 * 1000}>每 5 分钟</option>
+          <option value={15 * 60 * 1000}>每 15 分钟</option>
+          <option value={30 * 60 * 1000}>每 30 分钟</option>
+        </select>
+      </div>
 
       <div className="accounts-table-wrap">
         <table className="accounts-table">
@@ -131,15 +190,36 @@ export function AccountsManager(props: Props): JSX.Element {
                     <div className="account-actions-menu" data-action-menu-id={profile.id}>
                       <button
                         className="action-trigger"
-                        onClick={() => {
+                        onClick={(e) => {
                           setPendingDeleteProfileId(undefined);
-                          setOpenActionProfileId((prev) => (prev === profile.id ? undefined : profile.id));
+                          if (openActionProfileId === profile.id) {
+                            setOpenActionProfileId(undefined);
+                            setActionAnchorRect(undefined);
+                          } else {
+                            setOpenActionProfileId(profile.id);
+                            setActionAnchorRect(e.currentTarget.getBoundingClientRect());
+                          }
                         }}
                       >
                         ⋯
                       </button>
-                      {isActionOpen ? (
-                        <div className="action-menu-panel">
+                      {isActionOpen && actionAnchorRect ? createPortal(
+                        <div
+                          className="action-menu-panel"
+                          data-action-menu-id={profile.id}
+                          style={{
+                            position: "fixed",
+                            top: actionAnchorRect.top + 180 > window.innerHeight
+                              ? "auto"
+                              : `${actionAnchorRect.top}px`,
+                            bottom: actionAnchorRect.top + 180 > window.innerHeight
+                              ? `${window.innerHeight - actionAnchorRect.bottom}px`
+                              : "auto",
+                            right: `${window.innerWidth - actionAnchorRect.left + 8}px`,
+                            left: "auto",
+                            margin: 0
+                          }}
+                        >
                           <button
                             onClick={() => {
                               props.onRefreshUsage(profile.id);
@@ -187,7 +267,8 @@ export function AccountsManager(props: Props): JSX.Element {
                               <button onClick={() => setPendingDeleteProfileId(undefined)}>取消</button>
                             </div>
                           )}
-                        </div>
+                        </div>,
+                        document.body
                       ) : null}
                     </div>
                   </td>

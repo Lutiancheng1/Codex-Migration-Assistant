@@ -14,8 +14,8 @@ type Props = {
 export function ExportWizard(props: Props): JSX.Element {
   const canRun = props.outputDir.trim().length > 0;
   return (
-    <section className="card">
-      <h3>导出</h3>
+    <section>
+      <h3>配置与执行</h3>
       <div className="grid">
         <label>
           Codex 目录
@@ -23,7 +23,7 @@ export function ExportWizard(props: Props): JSX.Element {
         </label>
         <label>
           导出目录
-          <div className="row">
+          <div className="file-pick-row">
             <input value={props.outputDir} onChange={(e) => props.onChange("outputDir", e.target.value)} />
             <button onClick={props.onPickOutputDir}>选择</button>
           </div>
@@ -35,24 +35,26 @@ export function ExportWizard(props: Props): JSX.Element {
             <option value="enhanced">核心 + 编辑器状态</option>
           </select>
         </label>
-        <label className="check-row">
-          <span className="check-text">包含 state_*.sqlite*</span>
-          <input
-            type="checkbox"
-            checked={props.includeState}
-            onChange={(e) => props.onChange("includeState", e.target.checked)}
-            aria-label="包含 state 数据"
-          />
-        </label>
-        <label className="check-row">
-          <span className="check-text">包含 auth 文件（敏感）</span>
-          <input
-            type="checkbox"
-            checked={props.includeAuth}
-            onChange={(e) => props.onChange("includeAuth", e.target.checked)}
-            aria-label="包含 auth 文件"
-          />
-        </label>
+        <div className="toggle-row">
+          <label className="check-row">
+            <span className="check-text">包含 state_*.sqlite*</span>
+            <input
+              type="checkbox"
+              checked={props.includeState}
+              onChange={(e) => props.onChange("includeState", e.target.checked)}
+              aria-label="包含 state 数据"
+            />
+          </label>
+          <label className="check-row">
+            <span className="check-text">包含 auth 文件（敏感）</span>
+            <input
+              type="checkbox"
+              checked={props.includeAuth}
+              onChange={(e) => props.onChange("includeAuth", e.target.checked)}
+              aria-label="包含 auth 文件"
+            />
+          </label>
+        </div>
       </div>
       {!canRun ? <p className="error">请先选择导出目录。</p> : null}
       <button className="primary" onClick={props.onRun} disabled={!canRun}>执行导出</button>
