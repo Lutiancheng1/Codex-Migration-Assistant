@@ -57,6 +57,9 @@ export default function App(): JSX.Element {
           profilesRoot: msg.payload.profilesRoot,
           activeProfileId: msg.payload.activeProfileId,
           profiles: msg.payload.profiles,
+          antigravityProfilesRoot: msg.payload.antigravityProfilesRoot,
+          activeAntigravityProfileId: msg.payload.activeAntigravityProfileId,
+          antigravityProfiles: msg.payload.antigravityProfiles,
           antigravityUsageMode: msg.payload.antigravityUsage?.mode ?? s.antigravityUsageMode,
           antigravityUsageSummary: msg.payload.antigravityUsage?.summary,
           antigravityUsageError: msg.payload.antigravityUsage?.error,
@@ -184,6 +187,10 @@ export default function App(): JSX.Element {
                 profilesRoot={state.profilesRoot}
                 profiles={state.profiles}
                 activeProfileId={state.activeProfileId}
+                antigravityProfilesRoot={state.antigravityProfilesRoot}
+                antigravityProfiles={state.antigravityProfiles}
+                activeAntigravityProfileId={state.activeAntigravityProfileId}
+                newAntigravityProfileName={state.newAntigravityProfileName}
                 antigravityUsageMode={state.antigravityUsageMode}
                 antigravityManualToken={state.antigravityManualToken}
                 antigravityUsageSummary={state.antigravityUsageSummary}
@@ -192,6 +199,7 @@ export default function App(): JSX.Element {
                 newProfileName={state.newProfileName}
                 onChange={onChange}
                 onRefresh={() => dispatch({ type: "REFRESH_PROFILES", payload: { codexHome: state.codexHome } })}
+                onRefreshAntigravityProfiles={() => dispatch({ type: "REFRESH_ANTIGRAVITY_PROFILES" })}
                 onRefreshUsage={(profileId) => dispatch({ type: "REFRESH_PROFILE_USAGE", payload: { codexHome: state.codexHome, profileId } })}
                 onRefreshAntigravityUsage={() => dispatch({ type: "REFRESH_ANTIGRAVITY_USAGE" })}
                 onSaveAntigravityUsageAuth={() =>
@@ -210,6 +218,14 @@ export default function App(): JSX.Element {
                   }
                   dispatch({ type: "CREATE_PROFILE", payload: { codexHome: state.codexHome, name: state.newProfileName.trim() } });
                   onChange("newProfileName", "");
+                }}
+                onCreateAntigravity={() => {
+                  if (state.newAntigravityProfileName.trim().length === 0) {
+                    pushLocalError("请输入 Antigravity 新账号名称。");
+                    return;
+                  }
+                  dispatch({ type: "CREATE_ANTIGRAVITY_PROFILE", payload: { name: state.newAntigravityProfileName.trim() } });
+                  onChange("newAntigravityProfileName", "");
                 }}
                 onActivate={(profileId) =>
                   dispatch({
@@ -235,6 +251,18 @@ export default function App(): JSX.Element {
                 }}
                 onDelete={(profileId) => {
                   dispatch({ type: "DELETE_PROFILE", payload: { codexHome: state.codexHome, profileId } });
+                }}
+                onActivateAntigravity={(profileId) =>
+                  dispatch({
+                    type: "ACTIVATE_ANTIGRAVITY_PROFILE",
+                    payload: {
+                      profileId,
+                      backupCurrent: state.backupBeforeSwitch
+                    }
+                  })
+                }
+                onDeleteAntigravity={(profileId) => {
+                  dispatch({ type: "DELETE_ANTIGRAVITY_PROFILE", payload: { profileId } });
                 }}
               />
             </div>

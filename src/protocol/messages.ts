@@ -37,9 +37,28 @@ export type ProfileSummary = {
   usageError?: string;
 };
 
+export type AntigravityProfileSummary = {
+  id: string;
+  name: string;
+  path: string;
+  createdAt: string;
+  updatedAt: string;
+  lastActivatedAt?: string;
+  exists: boolean;
+  hasHome: boolean;
+  hasUser: boolean;
+};
+
 export type InitRequest = { type: "INIT" };
 export type RefreshProfilesRequest = { type: "REFRESH_PROFILES"; payload?: { codexHome?: string } };
 export type RefreshProfileUsageRequest = { type: "REFRESH_PROFILE_USAGE"; payload?: { codexHome?: string; profileId?: string } };
+export type RefreshAntigravityProfilesRequest = { type: "REFRESH_ANTIGRAVITY_PROFILES" };
+export type CreateAntigravityProfileRequest = { type: "CREATE_ANTIGRAVITY_PROFILE"; payload: { name: string } };
+export type ActivateAntigravityProfileRequest = {
+  type: "ACTIVATE_ANTIGRAVITY_PROFILE";
+  payload: { profileId: string; backupCurrent: boolean };
+};
+export type DeleteAntigravityProfileRequest = { type: "DELETE_ANTIGRAVITY_PROFILE"; payload: { profileId: string } };
 export type RefreshAntigravityUsageRequest = { type: "REFRESH_ANTIGRAVITY_USAGE" };
 export type SetAntigravityUsageAuthRequest = {
   type: "SET_ANTIGRAVITY_USAGE_AUTH";
@@ -112,6 +131,10 @@ export type RequestMessage =
   | InitRequest
   | RefreshProfilesRequest
   | RefreshProfileUsageRequest
+  | RefreshAntigravityProfilesRequest
+  | CreateAntigravityProfileRequest
+  | ActivateAntigravityProfileRequest
+  | DeleteAntigravityProfileRequest
   | RefreshAntigravityUsageRequest
   | SetAntigravityUsageAuthRequest
   | PickPathRequest
@@ -187,6 +210,13 @@ export type SwitchProfileResult = {
   messages: string[];
 };
 
+export type SwitchAntigravityProfileResult = {
+  targetProfileId: string;
+  backupCurrent: boolean;
+  relaunchedClients: string[];
+  messages: string[];
+};
+
 export type StateSnapshotEvent = {
   type: "STATE_SNAPSHOT";
   payload: {
@@ -196,6 +226,9 @@ export type StateSnapshotEvent = {
     profilesRoot: string;
     activeProfileId?: string;
     profiles: ProfileSummary[];
+    antigravityProfilesRoot: string;
+    activeAntigravityProfileId?: string;
+    antigravityProfiles: AntigravityProfileSummary[];
     antigravityUsage?: {
       mode: UsageAuthMode;
       summary?: ProfileUsageSummary;
@@ -231,12 +264,20 @@ export type TaskLogEvent = {
 export type TaskResultEvent = {
   type: "TASK_RESULT";
   payload: {
-    action: "export" | "previewImport" | "import" | "switchProfile" | "killProcesses" | "refreshAntigravityUsage";
+    action:
+      | "export"
+      | "previewImport"
+      | "import"
+      | "switchProfile"
+      | "switchAntigravityProfile"
+      | "killProcesses"
+      | "refreshAntigravityUsage";
     data:
       | ExportResult
       | PreviewResult
       | ImportResult
       | SwitchProfileResult
+      | SwitchAntigravityProfileResult
       | { killedCount: number }
       | { mode: UsageAuthMode; summary: ProfileUsageSummary };
   };

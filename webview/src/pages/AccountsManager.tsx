@@ -1,12 +1,22 @@
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import type { ProfileSummary, ProfileUsageSummary, ProfileUsageWindow, UsageAuthMode } from "../api/types";
+import type {
+  AntigravityProfileSummary,
+  ProfileSummary,
+  ProfileUsageSummary,
+  ProfileUsageWindow,
+  UsageAuthMode
+} from "../api/types";
 import { InfoHint } from "../components/InfoHint";
 
 type Props = {
   profilesRoot: string;
   profiles: ProfileSummary[];
   activeProfileId?: string;
+  antigravityProfilesRoot: string;
+  antigravityProfiles: AntigravityProfileSummary[];
+  activeAntigravityProfileId?: string;
+  newAntigravityProfileName: string;
   antigravityUsageMode: UsageAuthMode;
   antigravityManualToken: string;
   antigravityUsageSummary?: ProfileUsageSummary;
@@ -15,13 +25,17 @@ type Props = {
   newProfileName: string;
   onChange(field: string, value: string | boolean): void;
   onRefresh(): void;
+  onRefreshAntigravityProfiles(): void;
   onRefreshUsage(profileId?: string): void;
   onRefreshAntigravityUsage(): void;
   onSaveAntigravityUsageAuth(): void;
   onCreate(): void;
+  onCreateAntigravity(): void;
   onActivate(profileId: string): void;
   onActivateAndMerge(profileId: string): void;
   onDelete(profileId: string): void;
+  onActivateAntigravity(profileId: string): void;
+  onDeleteAntigravity(profileId: string): void;
 };
 
 function formatTime(value?: string): string {
@@ -358,6 +372,67 @@ export function AccountsManager(props: Props): JSX.Element {
           最近一次用量刷新存在失败项：{props.profiles.filter((item) => item.usageError).map((item) => `${item.name}: ${item.usageError}`).join("；")}
         </div>
       ) : null}
+
+      <div className="card" style={{ marginTop: "12px" }}>
+        <h3 style={{ marginBottom: "8px" }}>Antigravity 账号槽位</h3>
+        <p><strong>账号目录根：</strong> {props.antigravityProfilesRoot || "未初始化"}</p>
+        <p>
+          <strong>当前激活：</strong>{" "}
+          {props.antigravityProfiles.find((item) => item.id === props.activeAntigravityProfileId)?.name
+            ? `${props.antigravityProfiles.find((item) => item.id === props.activeAntigravityProfileId)?.name} (${props.activeAntigravityProfileId})`
+            : "未识别"}
+        </p>
+        <div className="account-create" style={{ marginTop: "10px" }}>
+          <input
+            className="account-create-input"
+            placeholder="输入 Antigravity 新账号名称"
+            value={props.newAntigravityProfileName}
+            onChange={(e) => props.onChange("newAntigravityProfileName", e.target.value)}
+          />
+          <div className="account-create-actions">
+            <button onClick={props.onCreateAntigravity} disabled={props.newAntigravityProfileName.trim().length === 0}>新增账号</button>
+            <button onClick={props.onRefreshAntigravityProfiles}>刷新列表</button>
+          </div>
+        </div>
+        <div className="accounts-table-wrap">
+          <table className="accounts-table">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>标识</th>
+                <th>Home</th>
+                <th>User</th>
+                <th>最后激活</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {props.antigravityProfiles.map((profile) => {
+                const isActive = profile.id === props.activeAntigravityProfileId;
+                return (
+                  <tr key={`ag-${profile.id}`}>
+                    <td>{profile.name}</td>
+                    <td>{profile.id}</td>
+                    <td>{profile.hasHome ? "有" : "无"}</td>
+                    <td>{profile.hasUser ? "有" : "无"}</td>
+                    <td>{formatTime(profile.lastActivatedAt)}</td>
+                    <td>
+                      <div className="row">
+                        <button onClick={() => props.onActivateAntigravity(profile.id)} disabled={isActive || !profile.exists}>
+                          {isActive ? "当前" : "切换"}
+                        </button>
+                        <button onClick={() => props.onDeleteAntigravity(profile.id)} disabled={isActive}>
+                          删除
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </section>
   );
 }

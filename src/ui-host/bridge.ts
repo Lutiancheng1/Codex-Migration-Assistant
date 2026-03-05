@@ -6,6 +6,13 @@ import * as fs from "fs/promises";
 import { runExport } from "../engine/exporter";
 import { runImport } from "../engine/importer";
 import { fetchAntigravityUsage, type AntigravityUsageAuthMode } from "../engine/antigravityUsage";
+import {
+  activateAntigravityProfile,
+  createAntigravityProfile,
+  deleteAntigravityProfile,
+  getAntigravityProfilesSnapshot,
+  type AntigravityProfilesSnapshot
+} from "../engine/antigravityProfiles";
 import { activateProfile, createProfile, deleteProfile, getProfilesSnapshot, refreshProfilesUsage, type ProfilesSnapshot } from "../engine/profiles";
 import { writeReportBundle } from "../engine/report";
 import { previewImport } from "../engine/scanner";
@@ -257,8 +264,14 @@ async function refreshAntigravityUsage(context: vscode.ExtensionContext): Promis
   return antigravityUsageState;
 }
 
-async function emitSnapshot(context: vscode.ExtensionContext, webview: vscode.Webview, snapshot: ProfilesSnapshot): Promise<void> {
+async function emitSnapshot(
+  context: vscode.ExtensionContext,
+  webview: vscode.Webview,
+  snapshot: ProfilesSnapshot,
+  antigravitySnapshot?: AntigravityProfilesSnapshot
+): Promise<void> {
   const usageState = await loadAntigravityUsageState(context);
+  const agSnapshot = antigravitySnapshot ?? (await getAntigravityProfilesSnapshot());
   send(webview, {
     type: "STATE_SNAPSHOT",
     payload: {
@@ -268,6 +281,9 @@ async function emitSnapshot(context: vscode.ExtensionContext, webview: vscode.We
       profilesRoot: snapshot.profilesRoot,
       activeProfileId: snapshot.activeProfileId,
       profiles: snapshot.profiles,
+      antigravityProfilesRoot: agSnapshot.profilesRoot,
+      activeAntigravityProfileId: agSnapshot.activeProfileId,
+      antigravityProfiles: agSnapshot.profiles,
       antigravityUsage: {
         mode: usageState.mode,
         summary: usageState.summary,
@@ -284,12 +300,16 @@ async function emitSnapshot(context: vscode.ExtensionContext, webview: vscode.We
     }
     emitTaskLog(webview, "info", message);
   }
+  for (const message of agSnapshot.messages) {
+    emitTaskLog(webview, "info", message);
+  }
 }
 
 async function emitStateSnapshot(context: vscode.ExtensionContext, webview: vscode.Webview, codexHomeOverride?: string): Promise<void> {
   const codexHome = resolveCodexHome(codexHomeOverride);
   const snapshot = await getProfilesSnapshot(codexHome);
-  await emitSnapshot(context, webview, snapshot);
+  const antigravitySnapshot = await getAntigravityProfilesSnapshot();
+  await emitSnapshot(context, webview, snapshot, antigravitySnapshot);
 }
 
 export function bindBridge(context: vscode.ExtensionContext, target: WebviewTarget): vscode.Disposable {
@@ -325,6 +345,78 @@ export function bindBridge(context: vscode.ExtensionContext, target: WebviewTarg
         const codexHome = resolveCodexHome(msg.payload?.codexHome);
         const snapshot = await refreshProfilesUsage(codexHome, msg.payload?.profileId);
         await emitSnapshot(context, target.webview, snapshot);
+        return;
+      }
+
+      if (msg.type === "REFRESH_ANTIGRAVITY_PROFILES") {
+        const codexHome = resolveCodexHome();
+        const snapshot = await getProfilesSnapshot(codexHome);
+        const antigravitySnapshot = await getAntigravityProfilesSnapshot(true);
+        await emitSnapshot(context, target.webview, snapshot, antigravitySnapshot);
+        return;
+      }
+
+      if (msg.type === "CREATE_ANTIGRAVITY_PROFILE") {
+        const antigravitySnapshot = await createAntigravityProfile(msg.payload.name);
+        const codexHome = resolveCodexHome();
+        const snapshot = await getProfilesSnapshot(codexHome);
+        await emitSnapshot(context, target.webview, snapshot, antigravitySnapshot);
+        return;
+      }
+
+      if (msg.type === "ACTIVATE_ANTIGRAVITY_PROFILE") {
+        send(target.webview, {
+          type: "TASK_PROGRESS",
+          payload: { step: "switch-antigravity-profile", percent: 10, message: "准备切换 Antigravity 账号" }
+        });
+        const antigravitySnapshot = await activateAntigravityProfile(msg.payload.profileId, msg.payload.backupCurrent);
+        send(target.webview, {
+          type: "TASK_PROGRESS",
+          payload: { step: "switch-antigravity-profile", percent: 80, message: "Antigravity 账号切换完成，正在刷新状态" }
+        });
+        const codexHome = resolveCodexHome();
+        const snapshot = await getProfilesSnapshot(codexHome);
+        await emitSnapshot(context, target.webview, snapshot, antigravitySnapshot);
+        let relaunchedClients: string[] = [];
+        if (pendingRelaunchCommands.length > 0) {
+          const result = await relaunchKilledProcesses(pendingRelaunchCommands);
+          relaunchedClients = result.succeeded;
+          if (result.attempted.length > 0) {
+            emitTaskLog(target.webview, "info", `已尝试恢复启动客户端: ${result.attempted.join(", ")}`);
+          }
+          if (result.succeeded.length > 0) {
+            emitTaskLog(target.webview, "info", `恢复启动成功: ${result.succeeded.join(", ")}`);
+          }
+          if (result.failed.length > 0) {
+            emitTaskLog(target.webview, "warn", `恢复启动失败: ${result.failed.join(", ")}（可手动打开）`);
+          }
+          pendingRelaunchCommands = [];
+        }
+        send(target.webview, {
+          type: "TASK_PROGRESS",
+          payload: { step: "switch-antigravity-profile", percent: 100, message: "切换完成" }
+        });
+        send(target.webview, {
+          type: "TASK_RESULT",
+          payload: {
+            action: "switchAntigravityProfile",
+            data: {
+              targetProfileId: msg.payload.profileId,
+              backupCurrent: msg.payload.backupCurrent,
+              relaunchedClients,
+              messages: antigravitySnapshot.messages
+            }
+          }
+        });
+        emitTaskLog(target.webview, "warn", "Antigravity 账号已切换。请重启 Antigravity 或执行 Reload Window。");
+        return;
+      }
+
+      if (msg.type === "DELETE_ANTIGRAVITY_PROFILE") {
+        const antigravitySnapshot = await deleteAntigravityProfile(msg.payload.profileId);
+        const codexHome = resolveCodexHome();
+        const snapshot = await getProfilesSnapshot(codexHome);
+        await emitSnapshot(context, target.webview, snapshot, antigravitySnapshot);
         return;
       }
 

@@ -21,6 +21,22 @@ export const requestSchema = z.discriminatedUnion("type", [
       })
       .optional()
   }),
+  z.object({ type: z.literal("REFRESH_ANTIGRAVITY_PROFILES") }),
+  z.object({
+    type: z.literal("CREATE_ANTIGRAVITY_PROFILE"),
+    payload: z.object({ name: z.string().min(1) })
+  }),
+  z.object({
+    type: z.literal("ACTIVATE_ANTIGRAVITY_PROFILE"),
+    payload: z.object({
+      profileId: z.string().min(1),
+      backupCurrent: z.boolean()
+    })
+  }),
+  z.object({
+    type: z.literal("DELETE_ANTIGRAVITY_PROFILE"),
+    payload: z.object({ profileId: z.string().min(1) })
+  }),
   z.object({ type: z.literal("REFRESH_ANTIGRAVITY_USAGE") }),
   z.object({
     type: z.literal("SET_ANTIGRAVITY_USAGE_AUTH"),

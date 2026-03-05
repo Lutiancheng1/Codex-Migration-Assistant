@@ -3,6 +3,7 @@ import type {
   ExportResult,
   ImportResult,
   PreviewResult,
+  AntigravityProfileSummary,
   ProfileSummary,
   ProfileUsageSummary,
   SwitchProfileResult,
@@ -17,6 +18,10 @@ export type UiState = {
   profilesRoot: string;
   profiles: ProfileSummary[];
   activeProfileId?: string;
+  antigravityProfilesRoot: string;
+  antigravityProfiles: AntigravityProfileSummary[];
+  activeAntigravityProfileId?: string;
+  newAntigravityProfileName: string;
   antigravityUsageMode: UsageAuthMode;
   antigravityManualToken: string;
   antigravityUsageSummary?: ProfileUsageSummary;
@@ -45,6 +50,10 @@ export const initialState: UiState = {
   profilesRoot: "",
   profiles: [],
   activeProfileId: undefined,
+  antigravityProfilesRoot: "",
+  antigravityProfiles: [],
+  activeAntigravityProfileId: undefined,
+  newAntigravityProfileName: "",
   antigravityUsageMode: "local_extract",
   antigravityManualToken: "",
   antigravityUsageSummary: undefined,

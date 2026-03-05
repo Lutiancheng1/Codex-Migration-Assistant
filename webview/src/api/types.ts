@@ -35,10 +35,26 @@ export type ProfileSummary = {
   usageError?: string;
 };
 
+export type AntigravityProfileSummary = {
+  id: string;
+  name: string;
+  path: string;
+  createdAt: string;
+  updatedAt: string;
+  lastActivatedAt?: string;
+  exists: boolean;
+  hasHome: boolean;
+  hasUser: boolean;
+};
+
 export type RequestMessage =
   | { type: "INIT" }
   | { type: "REFRESH_PROFILES"; payload?: { codexHome?: string } }
   | { type: "REFRESH_PROFILE_USAGE"; payload?: { codexHome?: string; profileId?: string } }
+  | { type: "REFRESH_ANTIGRAVITY_PROFILES" }
+  | { type: "CREATE_ANTIGRAVITY_PROFILE"; payload: { name: string } }
+  | { type: "ACTIVATE_ANTIGRAVITY_PROFILE"; payload: { profileId: string; backupCurrent: boolean } }
+  | { type: "DELETE_ANTIGRAVITY_PROFILE"; payload: { profileId: string } }
   | { type: "REFRESH_ANTIGRAVITY_USAGE" }
   | { type: "SET_ANTIGRAVITY_USAGE_AUTH"; payload: { mode: UsageAuthMode; refreshToken?: string } }
   | { type: "PICK_PATH"; payload: { kind: "folder" | "file"; title: string; filters?: Record<string, string[]> } }
@@ -158,6 +174,13 @@ export type SwitchProfileResult = {
   messages: string[];
 };
 
+export type SwitchAntigravityProfileResult = {
+  targetProfileId: string;
+  backupCurrent: boolean;
+  relaunchedClients: string[];
+  messages: string[];
+};
+
 export type ResponseMessage =
   | {
     type: "STATE_SNAPSHOT";
@@ -168,6 +191,9 @@ export type ResponseMessage =
       profilesRoot: string;
       activeProfileId?: string;
       profiles: ProfileSummary[];
+      antigravityProfilesRoot: string;
+      activeAntigravityProfileId?: string;
+      antigravityProfiles: AntigravityProfileSummary[];
       antigravityUsage?: {
         mode: UsageAuthMode;
         summary?: ProfileUsageSummary;
@@ -181,12 +207,20 @@ export type ResponseMessage =
   | {
     type: "TASK_RESULT";
     payload: {
-      action: "export" | "previewImport" | "import" | "switchProfile" | "killProcesses" | "refreshAntigravityUsage";
+      action:
+      | "export"
+      | "previewImport"
+      | "import"
+      | "switchProfile"
+      | "switchAntigravityProfile"
+      | "killProcesses"
+      | "refreshAntigravityUsage";
       data:
       | ExportResult
       | PreviewResult
       | ImportResult
       | SwitchProfileResult
+      | SwitchAntigravityProfileResult
       | { killedCount: number }
       | { mode: UsageAuthMode; summary: ProfileUsageSummary };
     };
