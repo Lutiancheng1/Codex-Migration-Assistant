@@ -221,17 +221,116 @@ function normalizeCommands(commands: string[]): string[] {
   return [...dedup.values()];
 }
 
+type KnownClientId =
+  | "codex"
+  | "antigravity"
+  | "cursor"
+  | "vscode"
+  | "vscode-insiders"
+  | "windsurf"
+  | "kiro"
+  | "trae"
+  | "qoder";
+
+function hasWord(command: string, word: string): boolean {
+  return new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(command);
+}
+
+function guessClientFromCommand(command: string): KnownClientId | undefined {
+  const value = command.trim().toLowerCase();
+  if (!value) {
+    return undefined;
+  }
+
+  // 先匹配更具体的词，避免 code 命中 codex
+  if (value.includes("code - insiders") || value.includes("code-insiders") || hasWord(value, "code-insiders")) return "vscode-insiders";
+  if (hasWord(value, "codex")) return "codex";
+  if (value.includes("antigravity")) return "antigravity";
+  if (hasWord(value, "cursor")) return "cursor";
+  if (value.includes("windsurf")) return "windsurf";
+  if (hasWord(value, "kiro")) return "kiro";
+  if (hasWord(value, "trae")) return "trae";
+  if (hasWord(value, "qoder")) return "qoder";
+
+  if (value.includes("visual studio code")) return "vscode";
+  if (hasWord(value, "code")) return "vscode";
+  return undefined;
+}
+
 function resolveMacAppCandidates(command: string): string[] {
-  if (command.includes("codex")) return ["Codex"];
-  if (command.includes("antigravity")) return ["Antigravity"];
-  if (command.includes("cursor")) return ["Cursor"];
-  if (command.includes("windsurf")) return ["Windsurf"];
-  if (command.includes("kiro")) return ["Kiro"];
-  if (command.includes("trae")) return ["Trae"];
-  if (command.includes("qoder")) return ["Qoder"];
-  if (command === "code" || command.includes("visual studio code")) return ["Visual Studio Code", "Code"];
-  if (command.includes("code - insiders") || command.includes("code-insiders")) return ["Visual Studio Code - Insiders", "Code - Insiders"];
-  return [];
+  const client = guessClientFromCommand(command);
+  if (!client) {
+    return [];
+  }
+  switch (client) {
+    case "codex":
+      return ["Codex"];
+    case "antigravity":
+      return ["Antigravity"];
+    case "cursor":
+      return ["Cursor"];
+    case "vscode":
+      return ["Visual Studio Code", "Code"];
+    case "vscode-insiders":
+      return ["Visual Studio Code - Insiders", "Code - Insiders"];
+    case "windsurf":
+      return ["Windsurf"];
+    case "kiro":
+      return ["Kiro"];
+    case "trae":
+      return ["Trae"];
+    case "qoder":
+      return ["Qoder"];
+    default:
+      return [];
+  }
+}
+
+function resolveWindowsProcessCandidates(command: string): string[] {
+  const client = guessClientFromCommand(command);
+  if (!client) {
+    const clean = command.trim().replace(/^"+|"+$/g, "");
+    if (!clean) {
+      return [];
+    }
+    return [clean.endsWith(".exe") ? clean : `${clean}.exe`];
+  }
+  switch (client) {
+    case "codex":
+      return ["codex.exe", "Codex.exe"];
+    case "antigravity":
+      return ["Antigravity.exe", "antigravity.exe"];
+    case "cursor":
+      return ["Cursor.exe", "cursor.exe"];
+    case "vscode":
+      return ["Code.exe", "code.exe"];
+    case "vscode-insiders":
+      return ["Code - Insiders.exe", "code-insiders.exe"];
+    case "windsurf":
+      return ["Windsurf.exe", "windsurf.exe"];
+    case "kiro":
+      return ["Kiro.exe", "kiro.exe"];
+    case "trae":
+      return ["Trae.exe", "trae.exe"];
+    case "qoder":
+      return ["Qoder.exe", "qoder.exe"];
+    default:
+      return [];
+  }
+}
+
+function dedupPreserveOrder(items: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    const key = item.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
 }
 
 async function relaunchDarwin(commands: string[]): Promise<RelaunchResult> {
@@ -262,8 +361,8 @@ async function relaunchWindows(commands: string[]): Promise<RelaunchResult> {
   const attempted: string[] = [];
   const succeeded: string[] = [];
   const failed: string[] = [];
-  for (const command of commands) {
-    const exe = command.endsWith(".exe") ? command : `${command}.exe`;
+  const candidates = dedupPreserveOrder(commands.flatMap((command) => resolveWindowsProcessCandidates(command)));
+  for (const exe of candidates) {
     attempted.push(exe);
     try {
       await execFileAsync("powershell", ["-NoProfile", "-Command", `Start-Process -FilePath '${exe.replace(/'/g, "''")}'`], { timeout: 5000 });
@@ -289,3 +388,9 @@ export async function relaunchKilledProcesses(commands: string[]): Promise<Relau
   }
   return { attempted: [], succeeded: [], failed: [] };
 }
+
+export const __test = {
+  guessClientFromCommand,
+  resolveMacAppCandidates,
+  resolveWindowsProcessCandidates
+};
