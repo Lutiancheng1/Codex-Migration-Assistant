@@ -8,6 +8,7 @@ on:
 
 jobs:
   release:
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write # 允许 Action 提交版本更新并创建 Release
