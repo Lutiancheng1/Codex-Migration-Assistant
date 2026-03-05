@@ -2,9 +2,9 @@
 
 面向 Codex 用户的数据迁移与账号管理扩展，基于 `VS Code Webview + React + TypeScript` 实现。
 
-## 0.1 分支说明
+## provider/codex 分支说明
 
-- `0.1` 分支为 **Codex 专用版本**，仅面向 Codex App 与 Codex VS Code 扩展的数据管理与迁移场景。
+- `provider/codex` 分支为 **Codex 专用版本**，仅面向 Codex App 与 Codex VS Code 扩展的数据管理与迁移场景。
 - 当前分支新增了“**按会话ID清理对话**”能力：支持批量输入、先预览后删除、二次确认，并可选择“下次重启生效”或“立即结束相关进程生效”。
 
 目标场景：
