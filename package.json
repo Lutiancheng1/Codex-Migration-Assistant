@@ -2,7 +2,7 @@
   "name": "ai-client-migration-assistant",
   "displayName": "AI 客户端迁移助手",
   "description": "在 macOS 与 Windows 间可视化迁移 AI 客户端数据（Codex/Antigravity/Claude/Gemini/Cursor）",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "local",
   "private": true,
   "engines": {
