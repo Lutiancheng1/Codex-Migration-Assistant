@@ -33,7 +33,7 @@ jobs:
 
       - name: Bump Version
         # 这里使用 npm version patch 自动使最后一位版本号加1，并打上 tag，[skip ci] 避免死循环动作
-        run: npm version patch -m "chore: bump version to %s [skip ci]"
+        run: 'npm version patch -m "chore: bump version to %s [skip ci]"'
 
       - name: Push version bump
         run: git push origin main --tags
@@ -44,7 +44,7 @@ jobs:
 
       - name: Get New Version
         id: get_version
-        run: echo "VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
+        run: echo "VERSION=$(node -p \"require('./package.json').version\")" >> $GITHUB_ENV
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
