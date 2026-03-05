@@ -8,7 +8,7 @@ import { runImport } from "../engine/importer";
 import { activateProfile, createProfile, deleteProfile, getProfilesSnapshot, refreshProfilesUsage, type ProfilesSnapshot } from "../engine/profiles";
 import { writeReportBundle } from "../engine/report";
 import { previewImport } from "../engine/scanner";
-import { forceKillProcesses } from "../engine/processGuard";
+import { forceKillProcesses, relaunchKilledProcesses } from "../engine/processGuard";
 import { asAppError, ErrorCode } from "../protocol/errors";
 import type { RequestMessage, ResponseMessage } from "../protocol/messages";
 import { requestSchema } from "../protocol/schema";
@@ -73,6 +73,14 @@ function formatBytes(size: number): string {
 
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleString();
+}
+
+async function statSafe(pathname: string): Promise<import("fs").Stats | undefined> {
+  try {
+    return await fs.stat(pathname);
+  } catch {
+    return undefined;
+  }
 }
 
 async function resolveBackupDirectoryInput(rawDirectory?: string): Promise<{ requested?: string; backupDir: string; normalizedFromFile: boolean }> {
@@ -173,6 +181,7 @@ async function pickBackupFromDefaultDirectory(webview: vscode.Webview, directory
 
 type WebviewTarget = { webview: vscode.Webview };
 let emittedUninitializedHint = false;
+let pendingRelaunchCommands: string[] = [];
 
 function resolveCreatedProfile(
   before: ProfilesSnapshot,
@@ -277,13 +286,54 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
 
       if (msg.type === "ACTIVATE_PROFILE") {
         const codexHome = resolveCodexHome(msg.payload.codexHome);
+        send(target.webview, {
+          type: "TASK_PROGRESS",
+          payload: { step: "switch-profile", percent: 10, message: "准备切换账号" }
+        });
         const snapshot = await activateProfile(
           codexHome,
           msg.payload.profileId,
           msg.payload.backupCurrent,
           msg.payload.mergeFromCurrentCore ?? false
         );
+        send(target.webview, {
+          type: "TASK_PROGRESS",
+          payload: { step: "switch-profile", percent: 80, message: "账号切换完成，正在刷新状态" }
+        });
         await emitSnapshot(target.webview, snapshot);
+        let relaunchedClients: string[] = [];
+        if (pendingRelaunchCommands.length > 0) {
+          const result = await relaunchKilledProcesses(pendingRelaunchCommands);
+          relaunchedClients = result.succeeded;
+          if (result.attempted.length > 0) {
+            emitTaskLog(target.webview, "info", `已尝试恢复启动客户端: ${result.attempted.join(", ")}`);
+          }
+          if (result.succeeded.length > 0) {
+            emitTaskLog(target.webview, "info", `恢复启动成功: ${result.succeeded.join(", ")}`);
+          }
+          if (result.failed.length > 0) {
+            emitTaskLog(target.webview, "warn", `恢复启动失败: ${result.failed.join(", ")}（可手动打开）`);
+          }
+          pendingRelaunchCommands = [];
+        }
+        send(target.webview, {
+          type: "TASK_PROGRESS",
+          payload: { step: "switch-profile", percent: 100, message: "切换完成" }
+        });
+        send(target.webview, {
+          type: "TASK_RESULT",
+          payload: {
+            action: "switchProfile",
+            data: {
+              codexHome,
+              targetProfileId: msg.payload.profileId,
+              backupCurrent: msg.payload.backupCurrent,
+              mergeFromCurrentCore: msg.payload.mergeFromCurrentCore ?? false,
+              relaunchedClients,
+              messages: snapshot.messages
+            }
+          }
+        });
         emitTaskLog(target.webview, "warn", "账号已切换。请重启 Codex App 或执行 Reload Window 以加载新账号会话。");
         return;
       }
@@ -302,6 +352,30 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
 
       if (msg.type === "PICK_DEFAULT_BACKUP") {
         await pickBackupFromDefaultDirectory(target.webview, msg.payload?.directory);
+        return;
+      }
+
+      if (msg.type === "OPEN_IN_OS") {
+        const rawPath = msg.payload.path.trim();
+        if (rawPath.length === 0) {
+          return;
+        }
+        const resolved = path.resolve(rawPath);
+        const st = await statSafe(resolved);
+        let revealPath: string | undefined;
+        if (st?.isDirectory()) {
+          revealPath = resolved;
+        } else if (st?.isFile()) {
+          revealPath = path.dirname(resolved);
+        } else if (resolved.toLowerCase().endsWith(".zip")) {
+          const parent = path.dirname(resolved);
+          if ((await statSafe(parent))?.isDirectory()) {
+            revealPath = parent;
+          }
+        }
+        if (revealPath) {
+          await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(revealPath));
+        }
         return;
       }
 
@@ -416,6 +490,7 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
       if (msg.type === "KILL_PROCESSES") {
         emitTaskLog(target.webview, "info", `即将尝试结束 ${msg.payload.pids.length} 个占用进程...`);
         const result = await forceKillProcesses(msg.payload.pids);
+        pendingRelaunchCommands = msg.payload.commands?.filter((item) => item.trim().length > 0) ?? [];
         emitTaskLog(target.webview, "info", `成功结束占用进程数: ${result.killedCount}`);
         send(target.webview, { type: "TASK_RESULT", payload: { action: "killProcesses", data: result } });
         return;

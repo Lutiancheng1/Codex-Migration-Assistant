@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { post } from "./api/vscodeBridge";
-import type { ExportResult, ImportResult, PreviewResult as PreviewResultData, RequestMessage, ResponseMessage, SamplesByDomain } from "./api/types";
-import { ConflictTable } from "./components/ConflictTable";
+import type { RequestMessage, ResponseMessage } from "./api/types";
 import { ProgressPanel } from "./components/ProgressPanel";
 import { RiskConfirmDialog } from "./components/RiskConfirmDialog";
 import { SummaryCard } from "./components/SummaryCard";
@@ -9,19 +8,11 @@ import { AccountsManager } from "./pages/AccountsManager";
 import { Home } from "./pages/Home";
 import { ExportWizard } from "./pages/ExportWizard";
 import { ImportWizard } from "./pages/ImportWizard";
-import { PreviewResult } from "./pages/PreviewResult";
-import { RunResult } from "./pages/RunResult";
 import { ProcessLockDialog, type BusyProcess } from "./components/ProcessLockDialog";
 import { initialState, type UiState } from "./state/store";
 import "./styles.css";
 
 type Tab = "export" | "import" | "accounts";
-type ResultData = ExportResult | PreviewResultData | ImportResult;
-type ConflictRow = {
-  domain: "sessions" | "rules" | "skills" | "editorState";
-  path: string;
-  type: "conflict" | "locked";
-};
 
 function normalizeOutputDirValue(input: string): string {
   const trimmed = input.trim();
@@ -38,21 +29,6 @@ function normalizeOutputDirValue(input: string): string {
   return trimmed.slice(0, slashIndex);
 }
 
-function hasSamples(data: ResultData): data is PreviewResultData | ImportResult {
-  return "conflictSamples" in data && "lockedSamples" in data;
-}
-
-function mapRows(kind: "conflict" | "locked", samples: SamplesByDomain): ConflictRow[] {
-  const domains: Array<keyof SamplesByDomain> = ["sessions", "rules", "skills", "editorState"];
-  const out: ConflictRow[] = [];
-  for (const domain of domains) {
-    for (const item of samples[domain]) {
-      out.push({ domain, path: item, type: kind });
-    }
-  }
-  return out;
-}
-
 type LockDetails = {
   busy?: BusyProcess[];
 };
@@ -60,7 +36,6 @@ type LockDetails = {
 export default function App(): JSX.Element {
   const [expandedTabs, setExpandedTabs] = useState<Set<Tab>>(new Set(["accounts"]));
   const [state, setState] = useState<UiState>(initialState);
-  const [lastPreview, setLastPreview] = useState<PreviewResultData>();
   const pickTargetRef = useRef<"outputDir" | "backupZip">("outputDir");
   const lastRequestRef = useRef<RequestMessage | undefined>();
   const [pendingLockDetails, setPendingLockDetails] = useState<LockDetails | undefined>();
@@ -112,9 +87,6 @@ export default function App(): JSX.Element {
       }
 
       if (msg.type === "TASK_RESULT") {
-        if (msg.payload.action === "previewImport") {
-          setLastPreview(msg.payload.data as PreviewResultData);
-        }
         if (msg.payload.action === "killProcesses") {
           // 接续之前的挂起操作
           if (lastRequestRef.current) {
@@ -122,7 +94,6 @@ export default function App(): JSX.Element {
           }
           return;
         }
-        setState((s) => ({ ...s, lastResult: msg.payload.data as Exclude<typeof msg.payload.data, { killedCount: number }>, lastError: undefined }));
         return;
       }
 
@@ -141,20 +112,6 @@ export default function App(): JSX.Element {
   }, []);
 
   const hasRisk = useMemo(() => state.includeAuth || state.importAuth || state.replaceState, [state.includeAuth, state.importAuth, state.replaceState]);
-  const isAccountsTab = expandedTabs.has("accounts");
-  const conflictRows = useMemo(() => {
-    const rows: ConflictRow[] = [];
-    if (lastPreview && hasSamples(lastPreview)) {
-      rows.push(...mapRows("conflict", lastPreview.conflictSamples));
-      rows.push(...mapRows("locked", lastPreview.lockedSamples));
-    }
-    if (state.lastResult && hasSamples(state.lastResult)) {
-      const sampled = state.lastResult;
-      rows.push(...mapRows("conflict", sampled.conflictSamples));
-      rows.push(...mapRows("locked", sampled.lockedSamples));
-    }
-    return rows.slice(0, 200);
-  }, [lastPreview, state.lastResult]);
 
   function toggleTab(targetTab: Tab): void {
     setExpandedTabs((prev) => {
@@ -227,13 +184,6 @@ export default function App(): JSX.Element {
                   })
                 }
                 onActivateAndMerge={(profileId) => {
-                  const target = state.profiles.find((item) => item.id === profileId);
-                  if (!target) {
-                    return;
-                  }
-                  if (!window.confirm(`确定切换到 "${target.name}" 并合并当前账号的聊天数据吗？`)) {
-                    return;
-                  }
                   dispatch({
                     type: "ACTIVATE_PROFILE",
                     payload: {
@@ -265,11 +215,17 @@ export default function App(): JSX.Element {
                 outputDir={state.outputDir}
                 includeState={state.includeState}
                 includeAuth={state.includeAuth}
-                mode={state.mode}
                 onChange={onChange}
                 onPickOutputDir={() => {
                   pickTargetRef.current = "outputDir";
                   dispatch({ type: "PICK_PATH", payload: { kind: "folder", title: "选择导出目录" } });
+                }}
+                onOpenOutputDir={() => {
+                  const pathname = state.outputDir.trim();
+                  if (pathname.length === 0) {
+                    return;
+                  }
+                  dispatch({ type: "OPEN_IN_OS", payload: { path: pathname } });
                 }}
                 onRun={() => {
                   if (state.outputDir.trim().length === 0) {
@@ -283,7 +239,7 @@ export default function App(): JSX.Element {
                       outputDir: state.outputDir,
                       includeState: state.includeState,
                       includeAuth: state.includeAuth,
-                      mode: state.mode
+                      mode: "core"
                     }
                   });
                 }}
@@ -306,7 +262,6 @@ export default function App(): JSX.Element {
                 importProfileName={state.importProfileName}
                 replaceState={state.replaceState}
                 importAuth={state.importAuth}
-                mode={state.mode}
                 onChange={onChange}
                 onPickZip={() => {
                   pickTargetRef.current = "backupZip";
@@ -328,7 +283,7 @@ export default function App(): JSX.Element {
                       backupZip: state.backupZip,
                       replaceState: state.replaceState,
                       importAuth: state.importAuth,
-                      mode: state.mode
+                      mode: "core"
                     }
                   });
                 }}
@@ -344,7 +299,7 @@ export default function App(): JSX.Element {
                       backupZip: state.backupZip,
                       replaceState: state.replaceState,
                       importAuth: state.importAuth,
-                      mode: state.mode
+                      mode: "core"
                     }
                   });
                 }}
@@ -365,7 +320,7 @@ export default function App(): JSX.Element {
                       backupZip: state.backupZip,
                       replaceState: state.replaceState,
                       importAuth: state.importAuth,
-                      mode: state.mode,
+                      mode: "core",
                       profileName
                     }
                   });
@@ -382,9 +337,6 @@ export default function App(): JSX.Element {
         <SummaryCard title="执行与操作日志">
           <pre className="log-pre">{state.logs.length ? state.logs.join("\n") : "暂无日志。"}</pre>
         </SummaryCard>
-        <PreviewResult data={lastPreview} />
-        <ConflictTable rows={conflictRows} />
-        <RunResult data={state.lastResult} error={state.lastError} />
       </div>
 
       <ProcessLockDialog
@@ -394,8 +346,9 @@ export default function App(): JSX.Element {
         onConfirmKill={() => {
           if (!pendingLockDetails?.busy) return;
           const pids = pendingLockDetails.busy.map(item => item.pid);
+          const commands = pendingLockDetails.busy.map(item => item.command);
           setPendingLockDetails(undefined);
-          post({ type: "KILL_PROCESSES", payload: { pids } });
+          post({ type: "KILL_PROCESSES", payload: { pids, commands } });
         }}
       />
     </main>

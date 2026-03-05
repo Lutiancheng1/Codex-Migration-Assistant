@@ -62,6 +62,7 @@ type UsageCacheEntry = {
   usageError?: string;
 };
 const usageCache = new Map<string, UsageCacheEntry>();
+const GLOBAL_STATE_FILE = ".codex-global-state.json";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -386,6 +387,59 @@ async function toSnapshot(paths: Paths, metadata: ProfilesMetadata, messages: st
   };
 }
 
+async function buildLiveProfile(paths: Paths): Promise<ProfileView | undefined> {
+  const codexStat = await statSafe(paths.codexHome);
+  if (!codexStat?.isDirectory()) {
+    return undefined;
+  }
+  const now = nowIso();
+  const preferredLabel = await resolveProfileAuthLabel(paths.codexHome);
+  return summarizeProfile({
+    id: "live",
+    name: preferredLabel ? `当前账号（${preferredLabel}）` : "当前账号",
+    path: paths.codexHome,
+    createdAt: now,
+    updatedAt: now,
+    lastActivatedAt: now
+  });
+}
+
+async function inferActiveProfileId(paths: Paths, metadata: ProfilesMetadata): Promise<string | undefined> {
+  if (metadata.activeProfileId) {
+    return metadata.activeProfileId;
+  }
+
+  const linkTarget = await resolveCodexTargetIfLink(paths.codexHome);
+  if (linkTarget) {
+    const matched = metadata.profiles.find((item) => samePath(item.path, linkTarget));
+    if (matched) {
+      return matched.id;
+    }
+  }
+
+  const codexStat = await statSafe(paths.codexHome);
+  if (codexStat?.isDirectory()) {
+    return "live";
+  }
+  return undefined;
+}
+
+async function resolveTemplateSourcePath(paths: Paths, metadata: ProfilesMetadata): Promise<string | undefined> {
+  const activeId = await inferActiveProfileId(paths, metadata);
+  if (activeId && activeId !== "live") {
+    const active = metadata.profiles.find((item) => item.id === activeId);
+    if (active && (await statSafe(active.path))?.isDirectory()) {
+      return active.path;
+    }
+  }
+
+  const codexStat = await statSafe(paths.codexHome);
+  if (codexStat?.isDirectory()) {
+    return paths.codexHome;
+  }
+  return undefined;
+}
+
 async function loadBootstrappedMetadata(codexHome: string): Promise<{ paths: Paths; metadata: ProfilesMetadata; messages: string[] }> {
   const paths = derivePaths(codexHome);
   const metadata = await readMetadata(paths);
@@ -403,31 +457,24 @@ export async function getProfilesSnapshot(codexHome: string, autoBootstrap = fal
   const paths = derivePaths(codexHome);
   const metadata = await readMetadata(paths);
   if (metadata.profiles.length > 0) {
-    let inferredActive = metadata.activeProfileId;
-    if (!inferredActive) {
-      const linkTarget = await resolveCodexTargetIfLink(paths.codexHome);
-      if (linkTarget) {
-        const matched = metadata.profiles.find((item) => samePath(item.path, linkTarget));
-        if (matched) {
-          inferredActive = matched.id;
-        }
-      }
+    const inferredActive = await inferActiveProfileId(paths, metadata);
+    if (inferredActive === "live") {
+      const liveProfile = await buildLiveProfile(paths);
+      const storedProfiles = await Promise.all(metadata.profiles.map((item) => summarizeProfile(item)));
+      storedProfiles.sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+      return {
+        codexHome: paths.codexHome,
+        profilesRoot: paths.profilesRoot,
+        activeProfileId: "live",
+        profiles: liveProfile ? [liveProfile, ...storedProfiles] : storedProfiles,
+        messages: []
+      };
     }
     return toSnapshot(paths, { ...metadata, activeProfileId: inferredActive }, []);
   }
 
-  const codexStat = await statSafe(paths.codexHome);
-  if (codexStat?.isDirectory()) {
-    const now = nowIso();
-    const preferredLabel = await resolveProfileAuthLabel(paths.codexHome);
-    const liveProfile = await summarizeProfile({
-      id: "live",
-      name: preferredLabel ? `当前账号（${preferredLabel}）` : "当前账号",
-      path: paths.codexHome,
-      createdAt: now,
-      updatedAt: now,
-      lastActivatedAt: now
-    });
+  const liveProfile = await buildLiveProfile(paths);
+  if (liveProfile) {
     return {
       codexHome: paths.codexHome,
       profilesRoot: paths.profilesRoot,
@@ -452,16 +499,18 @@ export async function createProfile(codexHome: string, profileName: string): Pro
     throw new Error("账号名称不能为空。");
   }
 
-  const loaded = await loadBootstrappedMetadata(codexHome);
-  const { paths, metadata, messages } = loaded;
+  const paths = derivePaths(codexHome);
+  const metadata = await readMetadata(paths);
+  const messages: string[] = [];
   const id = await allocateProfileId(metadata, paths.profilesRoot, name);
   const createdAt = nowIso();
   const profilePath = path.join(paths.profilesRoot, id);
 
+  await ensureDir(paths.profilesRoot);
   await createEmptyProfileSkeleton(profilePath);
-  const active = metadata.activeProfileId ? metadata.profiles.find((item) => item.id === metadata.activeProfileId) : undefined;
-  if (active) {
-    await copyFileIfExists(path.join(active.path, "config.toml"), path.join(profilePath, "config.toml"));
+  const templateSourcePath = await resolveTemplateSourcePath(paths, metadata);
+  if (templateSourcePath) {
+    await copyFileIfExists(path.join(templateSourcePath, "config.toml"), path.join(profilePath, "config.toml"));
   }
 
   metadata.profiles.push({
@@ -473,7 +522,9 @@ export async function createProfile(codexHome: string, profileName: string): Pro
   });
   await writeMetadata(paths, metadata);
   messages.push(`已创建账号槽位: ${name} (${id})`);
-  return toSnapshot(paths, metadata, messages);
+  const snapshot = await getProfilesSnapshot(codexHome);
+  snapshot.messages.unshift(...messages);
+  return snapshot;
 }
 
 export async function refreshProfilesUsage(codexHome: string, profileId?: string): Promise<ProfilesSnapshot> {
@@ -532,6 +583,241 @@ async function mergeCoreIntoTargetProfile(sourceProfilePath: string, targetProfi
   const tempOutputRoot = await fs.mkdtemp(path.join(os.tmpdir(), "codex-profile-merge-"));
   const snapshotRoot = path.join(tempOutputRoot, "target-core-before");
 
+  function asRecord(input: unknown): Record<string, unknown> {
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      return {};
+    }
+    return input as Record<string, unknown>;
+  }
+
+  function mergeUniqueStringArray(source: unknown, target: unknown): string[] {
+    const sourceItems = Array.isArray(source) ? source.filter((item): item is string => typeof item === "string") : [];
+    const targetItems = Array.isArray(target) ? target.filter((item): item is string => typeof item === "string") : [];
+    return Array.from(new Set([...sourceItems, ...targetItems]));
+  }
+
+  function mergeThreadTitles(source: unknown, target: unknown): Record<string, unknown> {
+    const src = asRecord(source);
+    const dst = asRecord(target);
+    const srcTitles = asRecord(src.titles);
+    const dstTitles = asRecord(dst.titles);
+    const order = mergeUniqueStringArray(src.order, dst.order);
+    return {
+      ...dst,
+      ...src,
+      titles: { ...dstTitles, ...srcTitles },
+      order
+    };
+  }
+
+  async function mergeGlobalState(sourceProfilePathInput: string, targetProfilePathInput: string): Promise<void> {
+    const sourcePath = path.join(sourceProfilePathInput, GLOBAL_STATE_FILE);
+    const targetPath = path.join(targetProfilePathInput, GLOBAL_STATE_FILE);
+    const sourceStat = await statSafe(sourcePath);
+    if (!sourceStat?.isFile()) {
+      return;
+    }
+    const targetStat = await statSafe(targetPath);
+    if (!targetStat?.isFile()) {
+      await fs.copyFile(sourcePath, targetPath);
+      messages.push("目标账号缺少全局状态文件，已同步 .codex-global-state.json。");
+      return;
+    }
+
+    try {
+      const sourceRaw = await fs.readFile(sourcePath, "utf8");
+      const targetRaw = await fs.readFile(targetPath, "utf8");
+      const sourceJson = asRecord(JSON.parse(sourceRaw));
+      const targetJson = asRecord(JSON.parse(targetRaw));
+
+      const sourceAtom = asRecord(sourceJson["electron-persisted-atom-state"]);
+      const targetAtom = asRecord(targetJson["electron-persisted-atom-state"]);
+      const mergedAtom: Record<string, unknown> = { ...targetAtom, ...sourceAtom };
+      mergedAtom["prompt-history"] = mergeUniqueStringArray(sourceAtom["prompt-history"], targetAtom["prompt-history"]);
+      mergedAtom["thread-titles"] = mergeThreadTitles(sourceAtom["thread-titles"], targetAtom["thread-titles"]);
+
+      const mergedRoot: Record<string, unknown> = {
+        ...targetJson,
+        ...sourceJson,
+        "electron-persisted-atom-state": mergedAtom,
+        "electron-saved-workspace-roots": mergeUniqueStringArray(
+          sourceJson["electron-saved-workspace-roots"],
+          targetJson["electron-saved-workspace-roots"]
+        ),
+        "active-workspace-roots": mergeUniqueStringArray(sourceJson["active-workspace-roots"], targetJson["active-workspace-roots"])
+      };
+
+      await fs.writeFile(targetPath, JSON.stringify(mergedRoot), "utf8");
+      messages.push("已合并 .codex-global-state.json（含线程标题与历史索引）。");
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      messages.push(`全局状态合并失败，已跳过 .codex-global-state.json。原因: ${reason}`);
+    }
+  }
+
+  async function collapseImportedSessionConflicts(targetProfilePathInput: string): Promise<void> {
+    const sessionsRoot = path.join(targetProfilePathInput, "sessions");
+    const sessionStat = await statSafe(sessionsRoot);
+    if (!sessionStat?.isDirectory()) {
+      return;
+    }
+
+    function asEventRecord(input: unknown): Record<string, unknown> | undefined {
+      if (!input || typeof input !== "object" || Array.isArray(input)) {
+        return undefined;
+      }
+      return input as Record<string, unknown>;
+    }
+
+    function pickSemanticEventKey(line: string): string | undefined {
+      try {
+        const parsed = JSON.parse(line) as unknown;
+        const root = asEventRecord(parsed);
+        if (!root) {
+          return undefined;
+        }
+        const payload = asEventRecord(root.payload);
+        const payloadMessage = payload ? asEventRecord(payload.message) : undefined;
+        const payloadItem = payload ? asEventRecord(payload.item) : undefined;
+
+        const type = typeof root.type === "string" ? root.type : "";
+        const timestamp = typeof root.timestamp === "string" ? root.timestamp : "";
+        const idCandidates = [
+          root.id,
+          payload?.id,
+          payload?.message_id,
+          payload?.response_id,
+          payload?.turn_id,
+          payload?.session_id,
+          payloadMessage?.id,
+          payloadItem?.id
+        ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+        const id = idCandidates[0] ?? "";
+
+        if (type && timestamp && id) {
+          return `${type}|${timestamp}|${id}`;
+        }
+        if (type && id) {
+          return `${type}|${id}`;
+        }
+        if (type && timestamp) {
+          return `${type}|${timestamp}`;
+        }
+        return undefined;
+      } catch {
+        return undefined;
+      }
+    }
+
+    function dedupeSessionLines(lines: string[]): { lines: string[]; removed: number } {
+      const deduped: string[] = [];
+      const seenRaw = new Set<string>();
+      const semanticIndex = new Map<string, number>();
+      let removed = 0;
+
+      for (const rawLine of lines) {
+        const line = rawLine.trimEnd();
+        if (line.length === 0) {
+          continue;
+        }
+        if (seenRaw.has(line)) {
+          removed += 1;
+          continue;
+        }
+
+        const semanticKey = pickSemanticEventKey(line);
+        if (semanticKey && semanticIndex.has(semanticKey)) {
+          const existingIndex = semanticIndex.get(semanticKey) as number;
+          const existingLine = deduped[existingIndex];
+          // 保留信息更完整的一行，避免语义同条但字段稍有差异时保留旧版本。
+          if (line.length > existingLine.length) {
+            deduped[existingIndex] = line;
+            seenRaw.add(line);
+          }
+          removed += 1;
+          continue;
+        }
+
+        deduped.push(line);
+        seenRaw.add(line);
+        if (semanticKey) {
+          semanticIndex.set(semanticKey, deduped.length - 1);
+        }
+      }
+
+      return { lines: deduped, removed };
+    }
+
+    const importedFiles: string[] = [];
+    async function walk(dirPath: string): Promise<void> {
+      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+      for (const entry of entries) {
+        const full = path.join(dirPath, entry.name);
+        if (entry.isDirectory()) {
+          await walk(full);
+          continue;
+        }
+        if (entry.isFile() && /-imported-\d{8}-\d{6}\.jsonl$/i.test(entry.name)) {
+          importedFiles.push(full);
+        }
+      }
+    }
+
+    await walk(sessionsRoot);
+    if (importedFiles.length === 0) {
+      return;
+    }
+
+    let mergedFiles = 0;
+    let appendedLines = 0;
+    let removedDuplicates = 0;
+    for (const importedPath of importedFiles) {
+      const canonicalPath = importedPath.replace(/-imported-\d{8}-\d{6}\.jsonl$/i, ".jsonl");
+      const canonicalStat = await statSafe(canonicalPath);
+      if (!canonicalStat?.isFile()) {
+        const importedRaw = await fs.readFile(importedPath, "utf8");
+        const importedLines = importedRaw.split("\n").filter((line) => line.length > 0);
+        const dedupedImported = dedupeSessionLines(importedLines);
+        const content = dedupedImported.lines.length > 0 ? `${dedupedImported.lines.join("\n")}\n` : "";
+        const tempPath = `${canonicalPath}.tmp`;
+        await fs.writeFile(tempPath, content, "utf8");
+        await fs.rename(tempPath, canonicalPath);
+        await fs.rm(importedPath, { force: true });
+        removedDuplicates += dedupedImported.removed;
+        mergedFiles += 1;
+        continue;
+      }
+
+      const canonicalRaw = await fs.readFile(canonicalPath, "utf8");
+      const importedRaw = await fs.readFile(importedPath, "utf8");
+      const canonicalLines = canonicalRaw.split("\n").filter((line) => line.length > 0);
+      const importedLines = importedRaw.split("\n").filter((line) => line.length > 0);
+      const beforeCount = canonicalLines.length;
+      const merged = dedupeSessionLines([...canonicalLines, ...importedLines]);
+      const mergedLines = merged.lines;
+      appendedLines += Math.max(0, mergedLines.length - beforeCount);
+      removedDuplicates += merged.removed;
+
+      const mergedContent = mergedLines.length > 0 ? `${mergedLines.join("\n")}\n` : "";
+      const tempPath = `${canonicalPath}.tmp`;
+      await fs.writeFile(tempPath, mergedContent, "utf8");
+      await fs.rename(tempPath, canonicalPath);
+      await fs.rm(importedPath, { force: true });
+      mergedFiles += 1;
+    }
+
+    messages.push(
+      `会话冲突收敛完成：处理 ${mergedFiles} 个 imported 会话文件，追加 ${appendedLines} 行新事件，去重 ${removedDuplicates} 行。`
+    );
+  }
+
+  async function listStateFiles(profilePath: string): Promise<string[]> {
+    const entries = await fs.readdir(profilePath, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isFile() && isStateFilename(entry.name))
+      .map((entry) => path.join(profilePath, entry.name));
+  }
+
   async function snapshotCoreState(profilePath: string, outPath: string): Promise<void> {
     await ensureDir(outPath);
     for (const dirName of CORE_DIRS) {
@@ -589,6 +875,18 @@ async function mergeCoreIntoTargetProfile(sourceProfilePath: string, targetProfi
     for (const warning of importResult.warnings) {
       messages.push(`合并警告: ${warning}`);
     }
+
+    const sourceStateFiles = await listStateFiles(sourceProfilePath);
+    const targetStateFiles = await listStateFiles(targetProfilePath);
+    if (sourceStateFiles.length > 0 && targetStateFiles.length === 0) {
+      for (const sourceFile of sourceStateFiles) {
+        await fs.copyFile(sourceFile, path.join(targetProfilePath, path.basename(sourceFile)));
+      }
+      messages.push(`目标账号未检测到 state 文件，已同步 ${sourceStateFiles.length} 个 state_*.sqlite*。`);
+    }
+
+    await collapseImportedSessionConflicts(targetProfilePath);
+    await mergeGlobalState(sourceProfilePath, targetProfilePath);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     try {
@@ -680,9 +978,11 @@ export async function activateProfile(
 }
 
 export async function deleteProfile(codexHome: string, profileId: string): Promise<ProfilesSnapshot> {
-  const loaded = await loadBootstrappedMetadata(codexHome);
-  const { paths, metadata, messages } = loaded;
-  if (metadata.activeProfileId === profileId) {
+  const paths = derivePaths(codexHome);
+  const metadata = await readMetadata(paths);
+  const messages: string[] = [];
+  const activeId = await inferActiveProfileId(paths, metadata);
+  if (activeId === profileId) {
     throw new Error("不能删除当前激活账号。请先切换到其他账号。");
   }
 

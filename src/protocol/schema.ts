@@ -36,6 +36,12 @@ export const requestSchema = z.discriminatedUnion("type", [
       .optional()
   }),
   z.object({
+    type: z.literal("OPEN_IN_OS"),
+    payload: z.object({
+      path: z.string().min(1)
+    })
+  }),
+  z.object({
     type: z.literal("CREATE_PROFILE"),
     payload: z.object({
       codexHome: z.string().optional(),
@@ -102,7 +108,8 @@ export const requestSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("KILL_PROCESSES"),
     payload: z.object({
-      pids: z.array(z.number())
+      pids: z.array(z.number()),
+      commands: z.array(z.string()).optional()
     })
   })
 ]);

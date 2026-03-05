@@ -202,3 +202,90 @@ export async function forceKillProcesses(pids: number[]): Promise<{ killedCount:
   }
   return { killedCount };
 }
+
+export type RelaunchResult = {
+  attempted: string[];
+  succeeded: string[];
+  failed: string[];
+};
+
+function normalizeCommands(commands: string[]): string[] {
+  const dedup = new Set<string>();
+  for (const raw of commands) {
+    const value = raw.trim().toLowerCase();
+    if (!value) {
+      continue;
+    }
+    dedup.add(value);
+  }
+  return [...dedup.values()];
+}
+
+function resolveMacAppCandidates(command: string): string[] {
+  if (command.includes("codex")) return ["Codex"];
+  if (command.includes("antigravity")) return ["Antigravity"];
+  if (command.includes("cursor")) return ["Cursor"];
+  if (command.includes("windsurf")) return ["Windsurf"];
+  if (command.includes("kiro")) return ["Kiro"];
+  if (command.includes("trae")) return ["Trae"];
+  if (command.includes("qoder")) return ["Qoder"];
+  if (command === "code" || command.includes("visual studio code")) return ["Visual Studio Code", "Code"];
+  if (command.includes("code - insiders") || command.includes("code-insiders")) return ["Visual Studio Code - Insiders", "Code - Insiders"];
+  return [];
+}
+
+async function relaunchDarwin(commands: string[]): Promise<RelaunchResult> {
+  const attempted: string[] = [];
+  const succeeded: string[] = [];
+  const failed: string[] = [];
+  const appNames = new Set<string>();
+  for (const command of commands) {
+    for (const app of resolveMacAppCandidates(command)) {
+      appNames.add(app);
+    }
+  }
+
+  for (const appName of appNames) {
+    attempted.push(appName);
+    try {
+      await execFileAsync("open", ["-a", appName], { timeout: 5000 });
+      succeeded.push(appName);
+    } catch {
+      failed.push(appName);
+    }
+  }
+
+  return { attempted, succeeded, failed };
+}
+
+async function relaunchWindows(commands: string[]): Promise<RelaunchResult> {
+  const attempted: string[] = [];
+  const succeeded: string[] = [];
+  const failed: string[] = [];
+  for (const command of commands) {
+    const exe = command.endsWith(".exe") ? command : `${command}.exe`;
+    attempted.push(exe);
+    try {
+      await execFileAsync("powershell", ["-NoProfile", "-Command", `Start-Process -FilePath '${exe.replace(/'/g, "''")}'`], { timeout: 5000 });
+      succeeded.push(exe);
+    } catch {
+      failed.push(exe);
+    }
+  }
+  return { attempted, succeeded, failed };
+}
+
+export async function relaunchKilledProcesses(commands: string[]): Promise<RelaunchResult> {
+  const normalized = normalizeCommands(commands);
+  if (normalized.length === 0) {
+    return { attempted: [], succeeded: [], failed: [] };
+  }
+
+  if (process.platform === "darwin") {
+    return relaunchDarwin(normalized);
+  }
+  if (process.platform === "win32") {
+    return relaunchWindows(normalized);
+  }
+  return { attempted: [], succeeded: [], failed: [] };
+}

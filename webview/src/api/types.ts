@@ -39,6 +39,7 @@ export type RequestMessage =
   | { type: "REFRESH_PROFILE_USAGE"; payload?: { codexHome?: string; profileId?: string } }
   | { type: "PICK_PATH"; payload: { kind: "folder" | "file"; title: string; filters?: Record<string, string[]> } }
   | { type: "PICK_DEFAULT_BACKUP"; payload?: { directory?: string } }
+  | { type: "OPEN_IN_OS"; payload: { path: string } }
   | { type: "CREATE_PROFILE"; payload: { codexHome?: string; name: string } }
   | {
     type: "ACTIVATE_PROFILE";
@@ -86,7 +87,7 @@ export type RequestMessage =
       profileName: string;
     };
   }
-  | { type: "KILL_PROCESSES"; payload: { pids: number[] } };
+  | { type: "KILL_PROCESSES"; payload: { pids: number[]; commands?: string[] } };
 
 export type Stats = {
   newCount: number;
@@ -137,6 +138,15 @@ export type ImportResult = {
   reportPath: string;
 };
 
+export type SwitchProfileResult = {
+  codexHome: string;
+  targetProfileId: string;
+  backupCurrent: boolean;
+  mergeFromCurrentCore: boolean;
+  relaunchedClients: string[];
+  messages: string[];
+};
+
 export type ResponseMessage =
   | {
     type: "STATE_SNAPSHOT";
@@ -155,8 +165,8 @@ export type ResponseMessage =
   | {
     type: "TASK_RESULT";
     payload: {
-      action: "export" | "previewImport" | "import" | "killProcesses";
-      data: ExportResult | PreviewResult | ImportResult | { killedCount: number };
+      action: "export" | "previewImport" | "import" | "switchProfile" | "killProcesses";
+      data: ExportResult | PreviewResult | ImportResult | SwitchProfileResult | { killedCount: number };
     };
   }
   | { type: "TASK_ERROR"; payload: { code: string; message: string; details?: Record<string, unknown> } };

@@ -1,6 +1,6 @@
-import type { ExportResult, ImportResult, PreviewResult } from "../api/types";
+import type { ExportResult, ImportResult, PreviewResult, SwitchProfileResult } from "../api/types";
 
-type ResultData = ExportResult | ImportResult | PreviewResult;
+type ResultData = ExportResult | ImportResult | PreviewResult | SwitchProfileResult;
 
 function isExportResult(data: ResultData): data is ExportResult {
   return "zipPath" in data;
@@ -8,6 +8,10 @@ function isExportResult(data: ResultData): data is ExportResult {
 
 function isImportResult(data: ResultData): data is ImportResult {
   return "reportPath" in data;
+}
+
+function isSwitchResult(data: ResultData): data is SwitchProfileResult {
+  return "targetProfileId" in data;
 }
 
 export function RunResult(props: { data?: ResultData; error?: string }): JSX.Element {
@@ -32,7 +36,16 @@ export function RunResult(props: { data?: ResultData; error?: string }): JSX.Ele
               {data.warnings.length > 0 ? <ul>{data.warnings.map((w) => <li key={w}>{w}</li>)}</ul> : null}
             </>
           ) : null}
-          {!isExportResult(data) && !isImportResult(data) ? (
+          {isSwitchResult(data) ? (
+            <>
+              <p><strong>目标账号：</strong> {data.targetProfileId}</p>
+              <p><strong>切换前备份：</strong> {data.backupCurrent ? "是" : "否"}</p>
+              <p><strong>切换并合并：</strong> {data.mergeFromCurrentCore ? "是" : "否"}</p>
+              <p><strong>恢复启动：</strong> {data.relaunchedClients.length > 0 ? data.relaunchedClients.join(", ") : "(无)"}</p>
+              {data.messages.length > 0 ? <ul>{data.messages.map((m) => <li key={m}>{m}</li>)}</ul> : null}
+            </>
+          ) : null}
+          {!isExportResult(data) && !isImportResult(data) && !isSwitchResult(data) ? (
             <p><strong>预演已完成。</strong> 请查看上方统计卡片与冲突表。</p>
           ) : null}
         </>

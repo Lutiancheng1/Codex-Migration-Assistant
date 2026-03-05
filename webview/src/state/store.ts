@@ -1,6 +1,6 @@
-import type { ExportResult, ImportResult, PreviewResult, ProfileSummary } from "../api/types";
+import type { ExportResult, ImportResult, PreviewResult, ProfileSummary, SwitchProfileResult } from "../api/types";
 
-type ResultData = ExportResult | PreviewResult | ImportResult;
+type ResultData = ExportResult | PreviewResult | ImportResult | SwitchProfileResult;
 
 export type UiState = {
   codexHome: string;
@@ -10,7 +10,6 @@ export type UiState = {
   activeProfileId?: string;
   backupBeforeSwitch: boolean;
   newProfileName: string;
-  mode: "core" | "enhanced";
   outputDir: string;
   backupZip: string;
   importProfileName: string;
@@ -33,7 +32,6 @@ export const initialState: UiState = {
   activeProfileId: undefined,
   backupBeforeSwitch: true,
   newProfileName: "",
-  mode: "core",
   outputDir: "",
   backupZip: "",
   importProfileName: "",

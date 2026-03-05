@@ -1,13 +1,13 @@
-import type { MigrationMode } from "../api/types";
+import { InfoHint } from "../components/InfoHint";
 
 type Props = {
   codexHome: string;
   outputDir: string;
   includeState: boolean;
   includeAuth: boolean;
-  mode: MigrationMode;
   onChange(field: string, value: string | boolean): void;
   onPickOutputDir(): void;
+  onOpenOutputDir(): void;
   onRun(): void;
 };
 
@@ -25,19 +25,26 @@ export function ExportWizard(props: Props): JSX.Element {
           导出目录
           <div className="file-pick-row">
             <input value={props.outputDir} onChange={(e) => props.onChange("outputDir", e.target.value)} />
+            <button
+              className="path-icon-btn"
+              onClick={props.onOpenOutputDir}
+              title="打开导出目录（系统文件管理器）"
+              aria-label="打开导出目录"
+            >
+              ↗
+            </button>
             <button onClick={props.onPickOutputDir}>选择</button>
           </div>
         </label>
-        <label>
-          迁移模式
-          <select value={props.mode} onChange={(e) => props.onChange("mode", e.target.value)}>
-            <option value="core">仅核心 (.codex)</option>
-            <option value="enhanced">核心 + 编辑器状态</option>
-          </select>
-        </label>
         <div className="toggle-row">
           <label className="check-row">
-            <span className="check-text">包含 state_*.sqlite*</span>
+            <span className="check-text">
+              包含 state_*.sqlite*
+              <InfoHint
+                label="state 文件说明"
+                tip="主要是本地索引和界面状态缓存。不包含时仍可迁移核心数据，但首次切换后列表可能短暂不同步。"
+              />
+            </span>
             <input
               type="checkbox"
               checked={props.includeState}
@@ -46,7 +53,13 @@ export function ExportWizard(props: Props): JSX.Element {
             />
           </label>
           <label className="check-row">
-            <span className="check-text">包含 auth 文件（敏感）</span>
+            <span className="check-text">
+              包含 auth 文件（敏感）
+              <InfoHint
+                label="auth 文件说明"
+                tip="登录态文件。勾选后可快捷迁移登录状态，但有账号串用或会话失效风险，建议仅在可信设备使用。"
+              />
+            </span>
             <input
               type="checkbox"
               checked={props.includeAuth}

@@ -40,6 +40,7 @@ export type RefreshProfilesRequest = { type: "REFRESH_PROFILES"; payload?: { cod
 export type RefreshProfileUsageRequest = { type: "REFRESH_PROFILE_USAGE"; payload?: { codexHome?: string; profileId?: string } };
 export type PickPathRequest = { type: "PICK_PATH"; payload: { kind: "folder" | "file"; title: string; filters?: Record<string, string[]> } };
 export type PickDefaultBackupRequest = { type: "PICK_DEFAULT_BACKUP"; payload?: { directory?: string } };
+export type OpenInOsRequest = { type: "OPEN_IN_OS"; payload: { path: string } };
 export type CreateProfileRequest = { type: "CREATE_PROFILE"; payload: { codexHome?: string; name: string } };
 export type ActivateProfileRequest = {
   type: "ACTIVATE_PROFILE";
@@ -92,6 +93,7 @@ export type KillProcessesRequest = {
   type: "KILL_PROCESSES";
   payload: {
     pids: number[];
+    commands?: string[];
   };
 };
 
@@ -101,6 +103,7 @@ export type RequestMessage =
   | RefreshProfileUsageRequest
   | PickPathRequest
   | PickDefaultBackupRequest
+  | OpenInOsRequest
   | CreateProfileRequest
   | ActivateProfileRequest
   | DeleteProfileRequest
@@ -159,6 +162,15 @@ export type ImportResult = {
   reportPath: string;
 };
 
+export type SwitchProfileResult = {
+  codexHome: string;
+  targetProfileId: string;
+  backupCurrent: boolean;
+  mergeFromCurrentCore: boolean;
+  relaunchedClients: string[];
+  messages: string[];
+};
+
 export type StateSnapshotEvent = {
   type: "STATE_SNAPSHOT";
   payload: {
@@ -198,8 +210,8 @@ export type TaskLogEvent = {
 export type TaskResultEvent = {
   type: "TASK_RESULT";
   payload: {
-    action: "export" | "previewImport" | "import" | "killProcesses";
-    data: ExportResult | PreviewResult | ImportResult | { killedCount: number };
+    action: "export" | "previewImport" | "import" | "switchProfile" | "killProcesses";
+    data: ExportResult | PreviewResult | ImportResult | SwitchProfileResult | { killedCount: number };
   };
 };
 

@@ -1,4 +1,4 @@
-import type { MigrationMode } from "../api/types";
+import { InfoHint } from "../components/InfoHint";
 
 type Props = {
   codexHome: string;
@@ -6,7 +6,6 @@ type Props = {
   importProfileName: string;
   replaceState: boolean;
   importAuth: boolean;
-  mode: MigrationMode;
   onChange(field: string, value: string | boolean): void;
   onPickZip(): void;
   onPickZipFromDefault(): void;
@@ -33,13 +32,6 @@ export function ImportWizard(props: Props): JSX.Element {
           </div>
         </label>
         <label>
-          迁移模式
-          <select value={props.mode} onChange={(e) => props.onChange("mode", e.target.value)}>
-            <option value="core">仅核心 (.codex)</option>
-            <option value="enhanced">核心 + 编辑器状态</option>
-          </select>
-        </label>
-        <label>
           导入为新账号
           <input
             placeholder="输入新账号名称，例如：备份导入账号"
@@ -49,7 +41,13 @@ export function ImportWizard(props: Props): JSX.Element {
         </label>
         <div className="toggle-row">
           <label className="check-row">
-            <span className="check-text">替换本地 state 文件</span>
+            <span className="check-text">
+              替换本地 state 文件
+              <InfoHint
+                label="替换 state 说明"
+                tip="用于恢复导入包里的本地索引与界面状态。可能覆盖当前本机缓存，建议先备份。"
+              />
+            </span>
             <input
               type="checkbox"
               checked={props.replaceState}
@@ -58,7 +56,13 @@ export function ImportWizard(props: Props): JSX.Element {
             />
           </label>
           <label className="check-row">
-            <span className="check-text">导入 auth 文件（高风险）</span>
+            <span className="check-text">
+              导入 auth 文件（高风险）
+              <InfoHint
+                label="导入 auth 说明"
+                tip="导入登录态文件。适合可信设备的快速迁移，不建议跨人共享，可能触发重新登录或权限异常。"
+              />
+            </span>
             <input
               type="checkbox"
               checked={props.importAuth}

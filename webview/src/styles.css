@@ -209,6 +209,10 @@ p {
   justify-content: flex-end;
 }
 
+.account-create-tip-line {
+  margin: 0 0 12px;
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -256,8 +260,56 @@ input[type="checkbox"] {
 }
 
 .check-text {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding-right: 8px;
+}
+
+.info-hint {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  outline: none;
+}
+
+.info-hint-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--fg) 35%, transparent);
+  color: color-mix(in srgb, var(--fg) 85%, transparent);
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.info-hint-tip {
+  position: absolute;
+  right: 22px;
+  left: auto;
+  top: 50%;
+  transform: translateY(-50%);
+  width: min(360px, calc(100vw - 56px));
+  max-width: calc(100vw - 56px);
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--vscode-editor-background) 96%, transparent);
+  color: var(--fg);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  white-space: pre-line;
+  word-break: break-word;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  z-index: 30;
+}
+
+.info-hint:hover .info-hint-tip,
+.info-hint:focus-within .info-hint-tip {
+  opacity: 1;
 }
 
 button {
@@ -496,6 +548,7 @@ td {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
+  gap: 8px;
 }
 
 .import-zip-row button {
@@ -521,9 +574,21 @@ td {
 
 .file-pick-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 8px;
+}
+
+.path-icon-btn {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
 }
 
 

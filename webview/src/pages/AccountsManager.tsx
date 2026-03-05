@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ProfileSummary, ProfileUsageWindow } from "../api/types";
+import { InfoHint } from "../components/InfoHint";
 
 type Props = {
   profilesRoot: string;
@@ -39,6 +40,7 @@ export function AccountsManager(props: Props): JSX.Element {
   const activeProfile = props.profiles.find((item) => item.id === props.activeProfileId);
   const canCreate = props.newProfileName.trim().length > 0;
   const [pendingDeleteProfileId, setPendingDeleteProfileId] = useState<string>();
+  const [pendingMergeProfileId, setPendingMergeProfileId] = useState<string>();
   const [openActionProfileId, setOpenActionProfileId] = useState<string>();
   const [actionAnchorRect, setActionAnchorRect] = useState<DOMRect | undefined>();
   const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(5 * 60 * 1000);
@@ -48,9 +50,7 @@ export function AccountsManager(props: Props): JSX.Element {
   useEffect(() => {
     if (props.profiles.length > 0 && !initialRefreshDone.current) {
       initialRefreshDone.current = true;
-      props.profiles.forEach((p) => {
-        props.onRefreshUsage(p.id);
-      });
+      props.onRefreshUsage();
     }
   }, [props.profiles, props.onRefreshUsage]);
 
@@ -60,9 +60,9 @@ export function AccountsManager(props: Props): JSX.Element {
       return;
     }
     const timer = setInterval(() => {
-      props.profiles.forEach((p) => {
-        props.onRefreshUsage(p.id);
-      });
+      if (props.profiles.length > 0) {
+        props.onRefreshUsage();
+      }
     }, autoRefreshInterval);
     return () => clearInterval(timer);
   }, [autoRefreshInterval, props.profiles, props.onRefreshUsage]);
@@ -88,6 +88,7 @@ export function AccountsManager(props: Props): JSX.Element {
     const handleScrollOrResize = () => {
       setOpenActionProfileId(undefined);
       setPendingDeleteProfileId(undefined);
+      setPendingMergeProfileId(undefined);
       setActionAnchorRect(undefined);
     };
 
@@ -125,10 +126,25 @@ export function AccountsManager(props: Props): JSX.Element {
           <button onClick={() => props.onRefreshUsage()}>刷新用量</button>
         </div>
       </div>
+      <div className="account-create-tip-line">
+        <span className="check-text">
+          新增账号步骤说明
+          <InfoHint
+            label="新增账号步骤说明"
+            tip={"1. 输入账号名称并点击“新增账号”。\n2. 在表格操作中点“切换”到新账号槽位。\n3. 客户端重启后，按提示登录该账号一次。\n4. 之后可在此页面随时来回切换账号。"}
+          />
+        </span>
+      </div>
 
       <div style={{ marginBottom: "12px" }}>
         <label className="check-row">
-          <span className="check-text">切换前自动备份当前账号（不含 auth）</span>
+          <span className="check-text">
+            切换前自动备份当前账号（不含 auth）
+            <InfoHint
+              label="切换前自动备份说明"
+              tip="开启后，每次切换账号前会先把当前账号导出为 ZIP（不含 auth 登录态）。这样切错或合并异常时可快速回滚。"
+            />
+          </span>
           <input
             type="checkbox"
             checked={props.backupBeforeSwitch}
@@ -174,6 +190,7 @@ export function AccountsManager(props: Props): JSX.Element {
             {props.profiles.map((profile) => {
               const isActive = profile.id === props.activeProfileId;
               const confirmDelete = pendingDeleteProfileId === profile.id;
+              const confirmMerge = pendingMergeProfileId === profile.id;
               const isActionOpen = openActionProfileId === profile.id;
               return (
                 <tr key={profile.id}>
@@ -192,6 +209,7 @@ export function AccountsManager(props: Props): JSX.Element {
                         className="action-trigger"
                         onClick={(e) => {
                           setPendingDeleteProfileId(undefined);
+                          setPendingMergeProfileId(undefined);
                           if (openActionProfileId === profile.id) {
                             setOpenActionProfileId(undefined);
                             setActionAnchorRect(undefined);
@@ -240,13 +258,29 @@ export function AccountsManager(props: Props): JSX.Element {
                           </button>
                           <button
                             onClick={() => {
-                              props.onActivateAndMerge(profile.id);
-                              setOpenActionProfileId(undefined);
+                              setPendingDeleteProfileId(undefined);
+                              setPendingMergeProfileId(profile.id);
                             }}
                             disabled={isActive || !profile.exists}
                           >
                             切换并合并
                           </button>
+                          {confirmMerge ? (
+                            <div className="action-delete-confirm">
+                              <button
+                                className="danger"
+                                onClick={() => {
+                                  setPendingMergeProfileId(undefined);
+                                  setOpenActionProfileId(undefined);
+                                  props.onActivateAndMerge(profile.id);
+                                }}
+                                disabled={isActive || !profile.exists}
+                              >
+                                确认合并
+                              </button>
+                              <button onClick={() => setPendingMergeProfileId(undefined)}>取消</button>
+                            </div>
+                          ) : null}
                           {!confirmDelete ? (
                             <button onClick={() => setPendingDeleteProfileId(profile.id)} disabled={isActive}>
                               删除
