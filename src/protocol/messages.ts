@@ -1,6 +1,7 @@
 import type { AppError } from "./errors";
 
 export type MigrationMode = "core" | "enhanced";
+export type ExportScope = "active" | "all" | "single";
 
 export type ProfileUsageWindow = {
   usedPercent: number;
@@ -55,6 +56,8 @@ export type StartExportRequest = {
     includeState: boolean;
     includeAuth: boolean;
     mode: MigrationMode;
+    scope?: ExportScope;
+    profileId?: string;
   };
 };
 export type StartPreviewImportRequest = {
@@ -146,6 +149,17 @@ export type ExportResult = {
   copiedItems: string[];
   mode: MigrationMode;
   warnings: string[];
+  scope?: ExportScope;
+  profileId?: string;
+  profileName?: string;
+  exportedProfiles?: Array<{
+    profileId: string;
+    profileName: string;
+    codexHome: string;
+    zipPath: string;
+    copiedItems: string[];
+    warnings: string[];
+  }>;
 };
 
 export type ImportResult = {

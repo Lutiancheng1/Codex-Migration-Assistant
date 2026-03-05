@@ -164,6 +164,24 @@ export default function App(): JSX.Element {
                 onChange={onChange}
                 onRefresh={() => dispatch({ type: "REFRESH_PROFILES", payload: { codexHome: state.codexHome } })}
                 onRefreshUsage={(profileId) => dispatch({ type: "REFRESH_PROFILE_USAGE", payload: { codexHome: state.codexHome, profileId } })}
+                onExportProfile={(profileId) => {
+                  if (state.outputDir.trim().length === 0) {
+                    pushLocalError("请先在导出面板设置导出目录。");
+                    return;
+                  }
+                  dispatch({
+                    type: "START_EXPORT",
+                    payload: {
+                      codexHome: state.codexHome,
+                      outputDir: state.outputDir,
+                      includeState: state.includeState,
+                      includeAuth: state.includeAuth,
+                      mode: "core",
+                      scope: "single",
+                      profileId
+                    }
+                  });
+                }}
                 onCreate={() => {
                   if (state.newProfileName.trim().length === 0) {
                     pushLocalError("请输入新账号名称。");
@@ -213,6 +231,7 @@ export default function App(): JSX.Element {
               <ExportWizard
                 codexHome={state.codexHome}
                 outputDir={state.outputDir}
+                exportScope={state.exportScope}
                 includeState={state.includeState}
                 includeAuth={state.includeAuth}
                 onChange={onChange}
@@ -239,7 +258,8 @@ export default function App(): JSX.Element {
                       outputDir: state.outputDir,
                       includeState: state.includeState,
                       includeAuth: state.includeAuth,
-                      mode: "core"
+                      mode: "core",
+                      scope: state.exportScope
                     }
                   });
                 }}

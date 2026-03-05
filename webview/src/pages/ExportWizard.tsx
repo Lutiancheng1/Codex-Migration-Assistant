@@ -3,6 +3,7 @@ import { InfoHint } from "../components/InfoHint";
 type Props = {
   codexHome: string;
   outputDir: string;
+  exportScope: "active" | "all";
   includeState: boolean;
   includeAuth: boolean;
   onChange(field: string, value: string | boolean): void;
@@ -36,6 +37,16 @@ export function ExportWizard(props: Props): JSX.Element {
             <button onClick={props.onPickOutputDir}>选择</button>
           </div>
         </label>
+        <label>
+          导出范围
+          <select
+            value={props.exportScope}
+            onChange={(e) => props.onChange("exportScope", e.target.value as "active" | "all")}
+          >
+            <option value="active">当前账号</option>
+            <option value="all">全部账号（批量导出）</option>
+          </select>
+        </label>
         <div className="toggle-row">
           <label className="check-row">
             <span className="check-text">
@@ -57,7 +68,7 @@ export function ExportWizard(props: Props): JSX.Element {
               包含 auth 文件（敏感）
               <InfoHint
                 label="auth 文件说明"
-                tip="登录态文件。勾选后可快捷迁移登录状态，但有账号串用或会话失效风险，建议仅在可信设备使用。"
+                tip="登录态文件。勾选后可快速迁移登录状态，但有账号串用或会话失效风险，建议仅在可信设备使用。"
               />
             </span>
             <input

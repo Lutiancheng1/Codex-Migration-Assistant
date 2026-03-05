@@ -11,6 +11,7 @@ export type UiState = {
   backupBeforeSwitch: boolean;
   newProfileName: string;
   outputDir: string;
+  exportScope: "active" | "all";
   backupZip: string;
   importProfileName: string;
   includeState: boolean;
@@ -33,6 +34,7 @@ export const initialState: UiState = {
   backupBeforeSwitch: true,
   newProfileName: "",
   outputDir: "",
+  exportScope: "active",
   backupZip: "",
   importProfileName: "",
   includeState: false,

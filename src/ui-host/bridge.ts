@@ -10,7 +10,7 @@ import { writeReportBundle } from "../engine/report";
 import { previewImport } from "../engine/scanner";
 import { forceKillProcesses, relaunchKilledProcesses } from "../engine/processGuard";
 import { asAppError, ErrorCode } from "../protocol/errors";
-import type { RequestMessage, ResponseMessage } from "../protocol/messages";
+import type { ExportResult, ExportScope, RequestMessage, ResponseMessage } from "../protocol/messages";
 import { requestSchema } from "../protocol/schema";
 import { resolveAndValidateCodexHome } from "../engine/codexHome";
 import { resolveCodexHome } from "../util/path";
@@ -177,6 +177,94 @@ async function pickBackupFromDefaultDirectory(webview: vscode.Webview, directory
   );
 
   send(webview, { type: "PATH_PICKED", payload: { path: picked?.value } });
+}
+
+type ExportTarget = {
+  profileId: string;
+  profileName: string;
+  codexHome: string;
+};
+
+function normalizeExportScope(scope?: ExportScope, profileId?: string): ExportScope {
+  if (scope) {
+    return scope;
+  }
+  if (profileId && profileId.trim().length > 0) {
+    return "single";
+  }
+  return "active";
+}
+
+function resolveExportTargets(
+  snapshot: ProfilesSnapshot,
+  codexHome: string,
+  scope: ExportScope,
+  profileId?: string
+): ExportTarget[] {
+  if (scope === "all") {
+    const available = snapshot.profiles.filter((item) => item.exists);
+    if (available.length === 0) {
+      throw new Error("未找到可导出的账号槽位。");
+    }
+    return available.map((item) => ({
+      profileId: item.id,
+      profileName: item.name,
+      codexHome: item.path
+    }));
+  }
+
+  if (scope === "single") {
+    const requestedProfileId = profileId?.trim();
+    if (!requestedProfileId) {
+      throw new Error("单账号导出缺少 profileId。");
+    }
+    const target = snapshot.profiles.find((item) => item.id === requestedProfileId);
+    if (!target) {
+      throw new Error(`未找到账号槽位: ${requestedProfileId}`);
+    }
+    if (!target.exists) {
+      throw new Error(`账号目录不存在: ${target.path}`);
+    }
+    return [
+      {
+        profileId: target.id,
+        profileName: target.name,
+        codexHome: target.path
+      }
+    ];
+  }
+
+  if (snapshot.activeProfileId) {
+    const active = snapshot.profiles.find((item) => item.id === snapshot.activeProfileId && item.exists);
+    if (active) {
+      return [
+        {
+          profileId: active.id,
+          profileName: active.name,
+          codexHome: active.path
+        }
+      ];
+    }
+  }
+
+  const live = snapshot.profiles.find((item) => item.id === "live" && item.exists);
+  if (live) {
+    return [
+      {
+        profileId: live.id,
+        profileName: live.name,
+        codexHome: live.path
+      }
+    ];
+  }
+
+  return [
+    {
+      profileId: snapshot.activeProfileId ?? "active",
+      profileName: "当前账号",
+      codexHome
+    }
+  ];
 }
 
 type WebviewTarget = { webview: vscode.Webview };
@@ -375,6 +463,88 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
         }
         if (revealPath) {
           await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(revealPath));
+        }
+        return;
+      }
+
+      if (msg.type === "START_EXPORT" && (msg.payload.scope || msg.payload.profileId)) {
+        const codexHome = await resolveAndValidateCodexHome(msg.payload.codexHome);
+        const scope = normalizeExportScope(msg.payload.scope, msg.payload.profileId);
+        const snapshot = await getProfilesSnapshot(codexHome);
+        const exportTargets = resolveExportTargets(snapshot, codexHome, scope, msg.payload.profileId);
+        emitTaskLog(target.webview, "info", `开始导出（模式=${msg.payload.mode}, 范围=${scope}）`);
+        emitTaskLog(target.webview, "info", `Codex 目录: ${codexHome}`);
+        send(target.webview, { type: "TASK_PROGRESS", payload: { step: "export", percent: 10, message: "准备导出" } });
+        if (scope === "all") {
+          emitTaskLog(target.webview, "info", `将按账号逐个导出，共 ${exportTargets.length} 个账号槽位。`);
+        }
+
+        const exportedProfiles: NonNullable<ExportResult["exportedProfiles"]> = [];
+        for (let index = 0; index < exportTargets.length; index += 1) {
+          const targetProfile = exportTargets[index];
+          const progress = Math.min(95, 10 + Math.floor((index / exportTargets.length) * 80));
+          send(target.webview, {
+            type: "TASK_PROGRESS",
+            payload: {
+              step: "export",
+              percent: progress,
+              message: `导出账号 (${index + 1}/${exportTargets.length}): ${targetProfile.profileName}`
+            }
+          });
+
+          const exportResult = await runExport({
+            codexHome: targetProfile.codexHome,
+            outputDir: msg.payload.outputDir,
+            includeState: msg.payload.includeState,
+            includeAuth: msg.payload.includeAuth,
+            mode: msg.payload.mode
+          });
+          exportedProfiles.push({
+            profileId: targetProfile.profileId,
+            profileName: targetProfile.profileName,
+            codexHome: targetProfile.codexHome,
+            zipPath: exportResult.zipPath,
+            copiedItems: exportResult.copiedItems,
+            warnings: exportResult.warnings
+          });
+          emitTaskLog(target.webview, "info", `账号 ${targetProfile.profileName} 导出 ZIP: ${exportResult.zipPath}`);
+          logger.appendLine(`[export] generated ${exportResult.zipPath} (${targetProfile.profileId})`);
+        }
+
+        let result: ExportResult;
+        if (exportedProfiles.length === 1) {
+          const single = exportedProfiles[0];
+          result = {
+            codexHome: single.codexHome,
+            zipPath: single.zipPath,
+            copiedItems: single.copiedItems,
+            mode: msg.payload.mode,
+            warnings: single.warnings,
+            scope,
+            profileId: single.profileId,
+            profileName: single.profileName,
+            exportedProfiles
+          };
+        } else {
+          const allWarnings = exportedProfiles.flatMap((item) => item.warnings.map((warning) => `[${item.profileName}] ${warning}`));
+          result = {
+            codexHome,
+            zipPath: exportedProfiles[0]?.zipPath ?? "",
+            copiedItems: [],
+            mode: msg.payload.mode,
+            warnings: allWarnings,
+            scope,
+            exportedProfiles
+          };
+          emitTaskLog(target.webview, "info", `批量导出完成，已生成 ${exportedProfiles.length} 个 ZIP 文件。`);
+        }
+
+        send(target.webview, { type: "TASK_PROGRESS", payload: { step: "export", percent: 100, message: "导出完成" } });
+        send(target.webview, { type: "TASK_RESULT", payload: { action: "export", data: result } });
+        for (const item of exportedProfiles) {
+          for (const warning of item.warnings) {
+            emitTaskLog(target.webview, "warn", `[${item.profileName}] ${warning}`);
+          }
         }
         return;
       }

@@ -12,6 +12,7 @@ type Props = {
   onChange(field: string, value: string | boolean): void;
   onRefresh(): void;
   onRefreshUsage(profileId?: string): void;
+  onExportProfile(profileId: string): void;
   onCreate(): void;
   onActivate(profileId: string): void;
   onActivateAndMerge(profileId: string): void;
@@ -246,6 +247,15 @@ export function AccountsManager(props: Props): JSX.Element {
                             disabled={!profile.exists}
                           >
                             刷新用量
+                          </button>
+                          <button
+                            onClick={() => {
+                              props.onExportProfile(profile.id);
+                              setOpenActionProfileId(undefined);
+                            }}
+                            disabled={!profile.exists}
+                          >
+                            单独导出
                           </button>
                           <button
                             onClick={() => {

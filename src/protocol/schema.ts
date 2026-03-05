@@ -71,7 +71,9 @@ export const requestSchema = z.discriminatedUnion("type", [
       outputDir: z.string().min(1),
       includeState: z.boolean(),
       includeAuth: z.boolean(),
-      mode: z.enum(["core", "enhanced"])
+      mode: z.enum(["core", "enhanced"]),
+      scope: z.enum(["active", "all", "single"]).optional(),
+      profileId: z.string().min(1).optional()
     })
   }),
   z.object({
