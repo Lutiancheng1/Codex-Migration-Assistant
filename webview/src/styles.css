@@ -218,6 +218,10 @@ label {
   gap: 6px;
 }
 
+.label-title {
+  font-weight: 600;
+}
+
 .check-row {
   display: flex;
   align-items: center;

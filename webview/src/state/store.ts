@@ -1,4 +1,4 @@
-import type { ExportResult, ImportResult, PreviewResult, ProfileSummary, SwitchProfileResult } from "../api/types";
+import type { ClientProvider, ExportResult, ImportResult, PreviewResult, ProfileSummary, SwitchProfileResult } from "../api/types";
 
 type ResultData = ExportResult | PreviewResult | ImportResult | SwitchProfileResult;
 
@@ -11,7 +11,9 @@ export type UiState = {
   backupBeforeSwitch: boolean;
   newProfileName: string;
   outputDir: string;
+  exportProviders: ClientProvider[];
   backupZip: string;
+  importProviders: ClientProvider[];
   importProfileName: string;
   includeState: boolean;
   includeAuth: boolean;
@@ -33,7 +35,9 @@ export const initialState: UiState = {
   backupBeforeSwitch: true,
   newProfileName: "",
   outputDir: "",
+  exportProviders: ["codex", "antigravity"],
   backupZip: "",
+  importProviders: ["codex", "antigravity"],
   importProfileName: "",
   includeState: false,
   includeAuth: false,

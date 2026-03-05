@@ -12,7 +12,7 @@ export async function writeReportBundle(reportPath: string, data: unknown): Prom
   const mdPath = reportPath.replace(/\.json$/i, ".md");
   const stamp = new Date().toISOString();
   const summary = [
-    "# Codex Migration Report",
+    "# AI Client Migration Report",
     "",
     `- Generated At: ${stamp}`,
     `- JSON Report: ${path.basename(reportPath)}`,

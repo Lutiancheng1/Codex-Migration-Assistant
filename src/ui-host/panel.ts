@@ -9,7 +9,7 @@ export async function openPanel(context: vscode.ExtensionContext): Promise<vscod
     return currentPanel;
   }
 
-  const panel = vscode.window.createWebviewPanel("codexMigration.panel", "Codex 迁移助手", vscode.ViewColumn.One, {
+  const panel = vscode.window.createWebviewPanel("clientMigration.panel", "AI 客户端迁移助手", vscode.ViewColumn.One, {
     enableScripts: true,
     retainContextWhenHidden: true,
     localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "dist-webview")]

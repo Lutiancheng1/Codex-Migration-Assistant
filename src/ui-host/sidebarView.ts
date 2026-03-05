@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { bindBridge } from "./bridge";
 import { renderWebviewHtml } from "./webviewHtml";
 
-export const SIDEBAR_VIEW_ID = "codexMigration.sidebarView";
+export const SIDEBAR_VIEW_ID = "clientMigration.sidebarView";
 
 export class CodexSidebarViewProvider implements vscode.WebviewViewProvider {
   constructor(private readonly context: vscode.ExtensionContext) {}

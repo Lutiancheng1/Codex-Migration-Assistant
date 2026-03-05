@@ -387,6 +387,7 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
         const result = await runExport({
           codexHome,
           outputDir: msg.payload.outputDir,
+          selectedProviders: msg.payload.selectedProviders,
           includeState: msg.payload.includeState,
           includeAuth: msg.payload.includeAuth,
           mode: msg.payload.mode
@@ -410,6 +411,7 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
         const result = await previewImport({
           codexHome,
           backupZip: msg.payload.backupZip,
+          selectedProviders: msg.payload.selectedProviders,
           replaceState: msg.payload.replaceState,
           importAuth: msg.payload.importAuth,
           mode: msg.payload.mode
@@ -432,6 +434,7 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
         const result = await runImport({
           codexHome,
           backupZip: msg.payload.backupZip,
+          selectedProviders: msg.payload.selectedProviders,
           replaceState: msg.payload.replaceState,
           importAuth: msg.payload.importAuth,
           mode: msg.payload.mode
@@ -469,6 +472,7 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
         const result = await runImport({
           codexHome: created.path,
           backupZip: msg.payload.backupZip,
+          selectedProviders: msg.payload.selectedProviders,
           replaceState: msg.payload.replaceState,
           importAuth: msg.payload.importAuth,
           mode: msg.payload.mode

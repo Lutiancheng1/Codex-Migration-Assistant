@@ -1,4 +1,5 @@
 import { z } from "zod";
+const providerSchema = z.enum(["codex", "antigravity", "claude", "gemini", "cursor"]);
 
 export const requestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("INIT") }),
@@ -69,9 +70,10 @@ export const requestSchema = z.discriminatedUnion("type", [
     payload: z.object({
       codexHome: z.string().optional(),
       outputDir: z.string().min(1),
+      selectedProviders: z.array(providerSchema).optional(),
       includeState: z.boolean(),
       includeAuth: z.boolean(),
-      mode: z.enum(["core", "enhanced"])
+      mode: z.literal("core")
     })
   }),
   z.object({
@@ -79,9 +81,10 @@ export const requestSchema = z.discriminatedUnion("type", [
     payload: z.object({
       codexHome: z.string().optional(),
       backupZip: z.string().min(1),
+      selectedProviders: z.array(providerSchema).optional(),
       replaceState: z.boolean(),
       importAuth: z.boolean(),
-      mode: z.enum(["core", "enhanced"])
+      mode: z.literal("core")
     })
   }),
   z.object({
@@ -89,9 +92,10 @@ export const requestSchema = z.discriminatedUnion("type", [
     payload: z.object({
       codexHome: z.string().optional(),
       backupZip: z.string().min(1),
+      selectedProviders: z.array(providerSchema).optional(),
       replaceState: z.boolean(),
       importAuth: z.boolean(),
-      mode: z.enum(["core", "enhanced"])
+      mode: z.literal("core")
     })
   }),
   z.object({
@@ -99,9 +103,10 @@ export const requestSchema = z.discriminatedUnion("type", [
     payload: z.object({
       codexHome: z.string().optional(),
       backupZip: z.string().min(1),
+      selectedProviders: z.array(providerSchema).optional(),
       replaceState: z.boolean(),
       importAuth: z.boolean(),
-      mode: z.enum(["core", "enhanced"]),
+      mode: z.literal("core"),
       profileName: z.string().min(1)
     })
   }),

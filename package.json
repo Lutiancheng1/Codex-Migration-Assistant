@@ -1,7 +1,7 @@
 {
-  "name": "codex-migration-assistant",
-  "displayName": "Codex 迁移助手",
-  "description": "在 macOS 与 Windows 间可视化迁移 Codex 数据（支持 Codex App 与 VS Code 扩展）",
+  "name": "ai-client-migration-assistant",
+  "displayName": "AI 客户端迁移助手",
+  "description": "在 macOS 与 Windows 间可视化迁移 AI 客户端数据（Codex/Antigravity/Claude/Gemini/Cursor）",
   "version": "0.1.0",
   "publisher": "local",
   "private": true,
@@ -13,7 +13,12 @@
     "Productivity"
   ],
   "keywords": [
+    "ai",
     "codex",
+    "antigravity",
+    "claude",
+    "gemini",
+    "cursor",
     "migration",
     "backup",
     "import",
@@ -22,7 +27,11 @@
     "备份"
   ],
   "activationEvents": [
-    "onView:codexMigration.sidebarView",
+    "onView:clientMigration.sidebarView",
+    "onCommand:clientMigration.open",
+    "onCommand:clientMigration.export",
+    "onCommand:clientMigration.previewImport",
+    "onCommand:clientMigration.import",
     "onCommand:codexMigration.open",
     "onCommand:codexMigration.export",
     "onCommand:codexMigration.previewImport",
@@ -32,35 +41,51 @@
   "contributes": {
     "commands": [
       {
+        "command": "clientMigration.open",
+        "title": "AI 客户端迁移: 打开面板"
+      },
+      {
+        "command": "clientMigration.export",
+        "title": "AI 客户端迁移: 导出"
+      },
+      {
+        "command": "clientMigration.previewImport",
+        "title": "AI 客户端迁移: 预演导入"
+      },
+      {
+        "command": "clientMigration.import",
+        "title": "AI 客户端迁移: 导入"
+      },
+      {
         "command": "codexMigration.open",
-        "title": "Codex 迁移: 打开面板"
+        "title": "Codex 迁移: 打开面板（兼容）"
       },
       {
         "command": "codexMigration.export",
-        "title": "Codex 迁移: 导出"
+        "title": "Codex 迁移: 导出（兼容）"
       },
       {
         "command": "codexMigration.previewImport",
-        "title": "Codex 迁移: 预演导入"
+        "title": "Codex 迁移: 预演导入（兼容）"
       },
       {
         "command": "codexMigration.import",
-        "title": "Codex 迁移: 导入"
+        "title": "Codex 迁移: 导入（兼容）"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "codexMigration",
-          "title": "Codex迁移",
-          "icon": "media/codex-migration.svg"
+          "id": "clientMigration",
+          "title": "AI迁移",
+          "icon": "media/client-migration.svg"
         }
       ]
     },
     "views": {
-      "codexMigration": [
+      "clientMigration": [
         {
-          "id": "codexMigration.sidebarView",
+          "id": "clientMigration.sidebarView",
           "name": "迁移助手",
           "type": "webview"
         }

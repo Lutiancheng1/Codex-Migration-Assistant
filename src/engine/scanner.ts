@@ -1,18 +1,20 @@
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
-import type { PreviewResult } from "../protocol/messages";
+import type { ClientProvider, PreviewResult } from "../protocol/messages";
 import { ErrorCode } from "../protocol/errors";
 import { previewHistoryMerge } from "./historyMerge";
-import { discoverLocalEditorSource, resolveBackupLayout, resolveCompatSourceDir } from "./layout";
+import { resolveBackupLayout, resolveCompatSourceDir } from "./layout";
 import { scanDirectoryDiffDetailed } from "./merger";
+import { getProvider, normalizeSelectedProviders } from "./providers";
 import { extractZipToDirectory } from "./zip";
 import { statSafe } from "./fileTree";
 
 export async function previewImport(params: {
   codexHome: string;
   backupZip: string;
-  mode: "core" | "enhanced";
+  selectedProviders?: ClientProvider[];
+  mode: "core";
   replaceState: boolean;
   importAuth: boolean;
 }): Promise<PreviewResult> {
@@ -25,17 +27,27 @@ export async function previewImport(params: {
 
   const codexHome = path.resolve(params.codexHome);
   const extractRoot = await fs.mkdtemp(path.join(os.tmpdir(), "codex-preview-"));
+  const selectedProviders = normalizeSelectedProviders(params.selectedProviders);
   try {
     await extractZipToDirectory(backupZip, extractRoot);
     const layout = await resolveBackupLayout(extractRoot);
-    const sessionsSource = await resolveCompatSourceDir(layout.coreRoot, "sessions");
-    const rulesSource = await resolveCompatSourceDir(layout.coreRoot, "rules");
-    const skillsSource = await resolveCompatSourceDir(layout.coreRoot, "skills");
+    const codexProviderRoot = path.join(extractRoot, "payload", "providers", "codex", "core");
+    const codexRoot = (await statSafe(codexProviderRoot))?.isDirectory() ? codexProviderRoot : layout.coreRoot;
+    const sessionsSource = await resolveCompatSourceDir(codexRoot, "sessions");
+    const rulesSource = await resolveCompatSourceDir(codexRoot, "rules");
+    const skillsSource = await resolveCompatSourceDir(codexRoot, "skills");
 
-    const sessionsResult = await scanDirectoryDiffDetailed(sessionsSource, path.join(codexHome, "sessions"));
-    const rulesResult = await scanDirectoryDiffDetailed(rulesSource, path.join(codexHome, "rules"));
-    const skillsResult = await scanDirectoryDiffDetailed(skillsSource, path.join(codexHome, "skills"));
-    const history = await previewHistoryMerge(path.join(layout.coreRoot, "history.jsonl"), path.join(codexHome, "history.jsonl"));
+    const emptyStats = { newCount: 0, sameCount: 0, conflictCount: 0, lockedCount: 0 };
+    let sessionsResult = { stats: emptyStats, conflictSamples: [] as string[], lockedSamples: [] as string[] };
+    let rulesResult = { stats: emptyStats, conflictSamples: [] as string[], lockedSamples: [] as string[] };
+    let skillsResult = { stats: emptyStats, conflictSamples: [] as string[], lockedSamples: [] as string[] };
+    let history = { appended: 0, same: 0 };
+    if (selectedProviders.includes("codex")) {
+      sessionsResult = await scanDirectoryDiffDetailed(sessionsSource, path.join(codexHome, "sessions"));
+      rulesResult = await scanDirectoryDiffDetailed(rulesSource, path.join(codexHome, "rules"));
+      skillsResult = await scanDirectoryDiffDetailed(skillsSource, path.join(codexHome, "skills"));
+      history = await previewHistoryMerge(path.join(codexRoot, "history.jsonl"), path.join(codexHome, "history.jsonl"));
+    }
     const editorConflictSamples: string[] = [];
     const editorLockedSamples: string[] = [];
 
@@ -49,52 +61,38 @@ export async function previewImport(params: {
     if (params.importAuth) {
       warnings.push("已启用 auth 导入，仅建议用于同账号迁移。");
     }
-    if (params.mode === "enhanced") {
-      if (layout.editors.length === 0) {
-        warnings.push("已启用增强模式，但备份中未检测到编辑器状态数据。");
-      } else {
-        const localEditor = await discoverLocalEditorSource();
-        for (const sourceEditor of layout.editors) {
-          const targetEditor = localEditor.editors.find((item) => item.editorId === sourceEditor.editorId);
-          if (!targetEditor) {
-            warnings.push(`备份包含 ${sourceEditor.editorLabel} 编辑器状态，但本机未发现对应用户目录。`);
-            continue;
-          }
-
-          if (sourceEditor.globalStorageDir && targetEditor.globalStorageDir) {
-            const scanned = await scanDirectoryDiffDetailed(sourceEditor.globalStorageDir, targetEditor.globalStorageDir);
-            for (const sample of scanned.conflictSamples) {
-              if (editorConflictSamples.length < 60) {
-                editorConflictSamples.push(`${sourceEditor.editorId}/globalStorage/${sample}`);
-              }
-            }
-            for (const sample of scanned.lockedSamples) {
-              if (editorLockedSamples.length < 60) {
-                editorLockedSamples.push(`${sourceEditor.editorId}/globalStorage/${sample}`);
-              }
-            }
-          }
-
-          if (sourceEditor.workspaceStorageDir && targetEditor.workspaceStorageDir) {
-            const scanned = await scanDirectoryDiffDetailed(sourceEditor.workspaceStorageDir, targetEditor.workspaceStorageDir);
-            for (const sample of scanned.conflictSamples) {
-              if (editorConflictSamples.length < 60) {
-                editorConflictSamples.push(`${sourceEditor.editorId}/workspaceStorage/${sample}`);
-              }
-            }
-            for (const sample of scanned.lockedSamples) {
-              if (editorLockedSamples.length < 60) {
-                editorLockedSamples.push(`${sourceEditor.editorId}/workspaceStorage/${sample}`);
-              }
-            }
+    const extraProviders = selectedProviders.filter((item) => item !== "codex");
+    for (const providerId of extraProviders) {
+      const provider = getProvider(providerId);
+      const targets = provider.resolveTargets(codexHome);
+      let foundAny = false;
+      for (const target of targets) {
+        const sourceDir = path.join(extractRoot, "payload", "providers", providerId, target.key);
+        if (!(await statSafe(sourceDir))?.isDirectory()) {
+          continue;
+        }
+        foundAny = true;
+        const scanned = await scanDirectoryDiffDetailed(sourceDir, target.destinationPath);
+        for (const sample of scanned.conflictSamples) {
+          if (editorConflictSamples.length < 60) {
+            editorConflictSamples.push(`${providerId}/${target.key}/${sample}`);
           }
         }
+        for (const sample of scanned.lockedSamples) {
+          if (editorLockedSamples.length < 60) {
+            editorLockedSamples.push(`${providerId}/${target.key}/${sample}`);
+          }
+        }
+      }
+      if (!foundAny) {
+        warnings.push(`备份中未找到 ${provider.label} 可预演目录。`);
       }
     }
 
     return {
       codexHome,
       backupZip,
+      selectedProviders,
       mode: params.mode,
       sessions: sessionsResult.stats,
       rules: rulesResult.stats,

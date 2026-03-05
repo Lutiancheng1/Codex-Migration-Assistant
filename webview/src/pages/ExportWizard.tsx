@@ -1,18 +1,29 @@
+import type { ClientProvider } from "../api/types";
 import { InfoHint } from "../components/InfoHint";
 
 type Props = {
   codexHome: string;
   outputDir: string;
+  selectedProviders: ClientProvider[];
   includeState: boolean;
   includeAuth: boolean;
   onChange(field: string, value: string | boolean): void;
   onPickOutputDir(): void;
   onOpenOutputDir(): void;
+  onToggleProvider(providerId: ClientProvider): void;
   onRun(): void;
 };
 
+const PROVIDER_OPTIONS: Array<{ id: ClientProvider; label: string }> = [
+  { id: "codex", label: "Codex" },
+  { id: "antigravity", label: "Antigravity" },
+  { id: "claude", label: "Claude" },
+  { id: "gemini", label: "Gemini" },
+  { id: "cursor", label: "Cursor" }
+];
+
 export function ExportWizard(props: Props): JSX.Element {
-  const canRun = props.outputDir.trim().length > 0;
+  const canRun = props.outputDir.trim().length > 0 && props.selectedProviders.length > 0;
   return (
     <section>
       <h3>配置与执行</h3>
@@ -36,6 +47,22 @@ export function ExportWizard(props: Props): JSX.Element {
             <button onClick={props.onPickOutputDir}>选择</button>
           </div>
         </label>
+        <div>
+          <div className="label-title">客户端选择</div>
+          <div className="toggle-row">
+            {PROVIDER_OPTIONS.map((item) => (
+              <label key={item.id} className="check-row">
+                <span className="check-text">{item.label}</span>
+                <input
+                  type="checkbox"
+                  checked={props.selectedProviders.includes(item.id)}
+                  onChange={() => props.onToggleProvider(item.id)}
+                  aria-label={`导出 ${item.label}`}
+                />
+              </label>
+            ))}
+          </div>
+        </div>
         <div className="toggle-row">
           <label className="check-row">
             <span className="check-text">
@@ -69,7 +96,7 @@ export function ExportWizard(props: Props): JSX.Element {
           </label>
         </div>
       </div>
-      {!canRun ? <p className="error">请先选择导出目录。</p> : null}
+      {!canRun ? <p className="error">请先选择导出目录并至少勾选一个客户端。</p> : null}
       <button className="primary" onClick={props.onRun} disabled={!canRun}>执行导出</button>
     </section>
   );

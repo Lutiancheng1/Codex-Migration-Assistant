@@ -1,11 +1,11 @@
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
-import type { ExportResult } from "../protocol/messages";
+import type { ClientProvider, ExportResult } from "../protocol/messages";
 import { AUTH_FILES, BACKUP_FORMAT, CORE_DIRS, CORE_TEXT_FILES } from "./constants";
 import { resolveProfileAuthLabel, toSafeBackupUserLabel } from "./authLabel";
-import { copyDirectoryContentIfExists, copyFileIfExists, ensureDir } from "./fileTree";
-import { discoverLocalEditorSource } from "./layout";
+import { copyFileIfExists, ensureDir, listFilesRecursive, statSafe } from "./fileTree";
+import { getProvider, normalizeSelectedProviders } from "./providers";
 import { timestampLocal } from "../util/time";
 import { createZipFromDirectory } from "./zip";
 
@@ -39,102 +39,116 @@ async function listTopLevelStateFiles(codexHome: string): Promise<string[]> {
 export async function runExport(params: {
   codexHome: string;
   outputDir: string;
+  selectedProviders?: ClientProvider[];
   includeState: boolean;
   includeAuth: boolean;
-  mode: "core" | "enhanced";
+  mode: "core";
 }): Promise<ExportResult> {
   const stamp = timestampLocal();
   const userLabel = await resolveBackupUserLabel(params.codexHome);
   const outputDir = path.resolve(params.outputDir);
   const zipPath = path.join(outputDir, `codex-backup-${userLabel}-${stamp}.zip`);
   const stageRoot = await fs.mkdtemp(path.join(os.tmpdir(), `codex-export-${stamp}-`));
-  const coreRoot = path.join(stageRoot, "payload", "core");
+  const selectedProviders = normalizeSelectedProviders(params.selectedProviders);
   const copiedItems: string[] = [];
 
+  async function copyDirectoryWithFilter(sourceDir: string, targetDir: string, shouldKeep: (relativePath: string) => boolean): Promise<number> {
+    const sourceStat = await statSafe(sourceDir);
+    if (!sourceStat?.isDirectory()) {
+      return 0;
+    }
+    const files = await listFilesRecursive(sourceDir);
+    let copied = 0;
+    for (const sourceFile of files) {
+      const relativePath = path.relative(sourceDir, sourceFile);
+      if (!shouldKeep(relativePath)) {
+        continue;
+      }
+      const targetFile = path.join(targetDir, relativePath);
+      await ensureDir(path.dirname(targetFile));
+      await fs.copyFile(sourceFile, targetFile);
+      copied += 1;
+    }
+    return copied;
+  }
+
   try {
-    await ensureDir(coreRoot);
     await ensureDir(outputDir);
-
-    for (const name of CORE_TEXT_FILES) {
-      const copied = await copyFileIfExists(path.join(params.codexHome, name), path.join(coreRoot, name));
-      if (copied) {
-        copiedItems.push(name);
-      }
-    }
-
-    for (const name of CORE_DIRS) {
-      const copied = await copyDirectoryContentIfExists(path.join(params.codexHome, name), path.join(coreRoot, name));
-      if (copied) {
-        copiedItems.push(name);
-      }
-    }
-
-    if (params.includeState) {
-      const stateFiles = await listTopLevelStateFiles(params.codexHome);
-      for (const file of stateFiles) {
-        await fs.copyFile(file, path.join(coreRoot, path.basename(file)));
-      }
-      if (stateFiles.length > 0) {
-        copiedItems.push("state_*.sqlite*");
-      }
-    }
-
-    if (params.includeAuth) {
-      for (const name of AUTH_FILES) {
-        const copied = await copyFileIfExists(path.join(params.codexHome, name), path.join(coreRoot, name));
-        if (copied) {
-          copiedItems.push(name);
-        }
-      }
-    }
-
     const warnings: string[] = [];
-    if (params.mode === "enhanced") {
-      const editorState = await discoverLocalEditorSource();
-      let copiedEditorPayloadCount = 0;
-      if (editorState.editors.length === 0) {
-        warnings.push("已启用增强模式，但未发现可识别的编辑器用户目录。");
+    for (const providerId of selectedProviders) {
+      const provider = getProvider(providerId);
+      const targets = provider.resolveTargets(params.codexHome);
+      if (providerId === "codex") {
+        const coreRoot = path.join(stageRoot, "payload", "providers", "codex", "core");
+        await ensureDir(coreRoot);
+        for (const name of CORE_TEXT_FILES) {
+          const copied = await copyFileIfExists(path.join(params.codexHome, name), path.join(coreRoot, name));
+          if (copied) {
+            copiedItems.push(`codex/${name}`);
+          }
+        }
+        for (const name of CORE_DIRS) {
+          const count = await copyDirectoryWithFilter(
+            path.join(params.codexHome, name),
+            path.join(coreRoot, name),
+            () => true
+          );
+          if (count > 0) {
+            copiedItems.push(`codex/${name}`);
+          }
+        }
+        if (params.includeState) {
+          const stateFiles = await listTopLevelStateFiles(params.codexHome);
+          for (const file of stateFiles) {
+            await fs.copyFile(file, path.join(coreRoot, path.basename(file)));
+          }
+          if (stateFiles.length > 0) {
+            copiedItems.push("codex/state_*.sqlite*");
+          }
+        }
+        if (params.includeAuth) {
+          for (const name of AUTH_FILES) {
+            const copied = await copyFileIfExists(path.join(params.codexHome, name), path.join(coreRoot, name));
+            if (copied) {
+              copiedItems.push(`codex/${name}`);
+            }
+          }
+        }
+        continue;
       }
 
-      for (const editor of editorState.editors) {
-        const editorRoot = path.join(stageRoot, "payload", "editor", editor.editorId);
-        let copiedForCurrentEditor = false;
-
-        for (const storageDir of editor.codexGlobalStorageDirs) {
-          const dirName = path.basename(storageDir);
-          await copyDirectoryContentIfExists(storageDir, path.join(editorRoot, "globalStorage", dirName));
-          copiedForCurrentEditor = true;
-        }
-        if (editor.codexGlobalStorageDirs.length > 0) {
-          copiedItems.push(`editor/${editor.editorId}/globalStorage`);
-        }
-
-        for (const workspaceDir of editor.codexWorkspaceStorageDirs) {
-          const workspaceId = path.basename(workspaceDir);
-          await copyDirectoryContentIfExists(workspaceDir, path.join(editorRoot, "workspaceStorage", workspaceId));
-          copiedForCurrentEditor = true;
-        }
-        if (editor.codexWorkspaceStorageDirs.length > 0) {
-          copiedItems.push(`editor/${editor.editorId}/workspaceStorage`);
-        }
-
-        if (copiedForCurrentEditor) {
-          copiedEditorPayloadCount += 1;
+      let providerCopied = 0;
+      for (const target of targets) {
+        const stageDir = path.join(stageRoot, "payload", "providers", providerId, target.key);
+        const copiedCount = await copyDirectoryWithFilter(target.sourcePath, stageDir, (relativePath) => {
+          const filename = path.basename(relativePath);
+          if (!params.includeAuth && /(auth|token|session|credential|cookies?|keychain|oauth|login)/i.test(relativePath)) {
+            return false;
+          }
+          if (!params.includeState && /^state_.*\.sqlite(?:-wal|-shm)?$/i.test(filename)) {
+            return false;
+          }
+          return true;
+        });
+        if (copiedCount > 0) {
+          providerCopied += copiedCount;
+          copiedItems.push(`${providerId}/${target.key}`);
         }
       }
-
-      if (editorState.editors.length > 0 && copiedEditorPayloadCount === 0) {
-        warnings.push("已启用增强模式，但未发现任何 Codex 相关的编辑器状态目录。");
+      if (providerCopied === 0) {
+        warnings.push(`${provider.label} 未检测到可导出的目录。`);
       }
     }
 
     const metadata = {
-      format: BACKUP_FORMAT,
+      format: "ai-client-backup-v1",
+      compatFormat: BACKUP_FORMAT,
       createdAt: new Date().toISOString(),
       platform: process.platform,
       nodeVersion: process.version,
       codexHome: params.codexHome,
       mode: params.mode,
+      selectedProviders,
       backupUserLabel: userLabel,
       includeState: params.includeState,
       includeAuth: params.includeAuth,
@@ -148,6 +162,7 @@ export async function runExport(params: {
     return {
       codexHome: params.codexHome,
       zipPath,
+      selectedProviders,
       mode: params.mode,
       copiedItems,
       warnings

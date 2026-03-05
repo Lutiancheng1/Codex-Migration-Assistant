@@ -129,6 +129,18 @@ export default function App(): JSX.Element {
     setState((s) => ({ ...s, [field]: value }));
   }
 
+  function toggleProvider(field: "exportProviders" | "importProviders", providerId: "codex" | "antigravity" | "claude" | "gemini" | "cursor"): void {
+    setState((s) => {
+      const next = new Set(s[field]);
+      if (next.has(providerId)) {
+        next.delete(providerId);
+      } else {
+        next.add(providerId);
+      }
+      return { ...s, [field]: Array.from(next) } as UiState;
+    });
+  }
+
   function pushLocalError(message: string): void {
     setState((s) => ({ ...s, lastError: message, logs: [...s.logs, `[error] ${message}`] }));
   }
@@ -136,7 +148,7 @@ export default function App(): JSX.Element {
   return (
     <main>
       <header>
-        <h1>Codex 迁移助手</h1>
+        <h1>AI 客户端迁移助手</h1>
         <p>VS Code 扩展 · TypeScript 迁移引擎</p>
       </header>
 
@@ -215,7 +227,9 @@ export default function App(): JSX.Element {
                 outputDir={state.outputDir}
                 includeState={state.includeState}
                 includeAuth={state.includeAuth}
+                selectedProviders={state.exportProviders}
                 onChange={onChange}
+                onToggleProvider={(providerId) => toggleProvider("exportProviders", providerId)}
                 onPickOutputDir={() => {
                   pickTargetRef.current = "outputDir";
                   dispatch({ type: "PICK_PATH", payload: { kind: "folder", title: "选择导出目录" } });
@@ -237,6 +251,7 @@ export default function App(): JSX.Element {
                     payload: {
                       codexHome: state.codexHome,
                       outputDir: state.outputDir,
+                      selectedProviders: state.exportProviders,
                       includeState: state.includeState,
                       includeAuth: state.includeAuth,
                       mode: "core"
@@ -259,10 +274,12 @@ export default function App(): JSX.Element {
               <ImportWizard
                 codexHome={state.codexHome}
                 backupZip={state.backupZip}
+                selectedProviders={state.importProviders}
                 importProfileName={state.importProfileName}
                 replaceState={state.replaceState}
                 importAuth={state.importAuth}
                 onChange={onChange}
+                onToggleProvider={(providerId) => toggleProvider("importProviders", providerId)}
                 onPickZip={() => {
                   pickTargetRef.current = "backupZip";
                   dispatch({ type: "PICK_PATH", payload: { kind: "file", title: "选择备份 ZIP 文件", filters: { Zip: ["zip"] } } });
@@ -281,6 +298,7 @@ export default function App(): JSX.Element {
                     payload: {
                       codexHome: state.codexHome,
                       backupZip: state.backupZip,
+                      selectedProviders: state.importProviders,
                       replaceState: state.replaceState,
                       importAuth: state.importAuth,
                       mode: "core"
@@ -297,6 +315,7 @@ export default function App(): JSX.Element {
                     payload: {
                       codexHome: state.codexHome,
                       backupZip: state.backupZip,
+                      selectedProviders: state.importProviders,
                       replaceState: state.replaceState,
                       importAuth: state.importAuth,
                       mode: "core"
@@ -318,6 +337,7 @@ export default function App(): JSX.Element {
                     payload: {
                       codexHome: state.codexHome,
                       backupZip: state.backupZip,
+                      selectedProviders: state.importProviders,
                       replaceState: state.replaceState,
                       importAuth: state.importAuth,
                       mode: "core",

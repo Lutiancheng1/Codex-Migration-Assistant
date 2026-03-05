@@ -1,6 +1,7 @@
 import type { AppError } from "./errors";
 
-export type MigrationMode = "core" | "enhanced";
+export type MigrationMode = "core";
+export type ClientProvider = "codex" | "antigravity" | "claude" | "gemini" | "cursor";
 
 export type ProfileUsageWindow = {
   usedPercent: number;
@@ -52,6 +53,7 @@ export type StartExportRequest = {
   payload: {
     codexHome?: string;
     outputDir: string;
+    selectedProviders?: ClientProvider[];
     includeState: boolean;
     includeAuth: boolean;
     mode: MigrationMode;
@@ -62,6 +64,7 @@ export type StartPreviewImportRequest = {
   payload: {
     codexHome?: string;
     backupZip: string;
+    selectedProviders?: ClientProvider[];
     replaceState: boolean;
     importAuth: boolean;
     mode: MigrationMode;
@@ -72,6 +75,7 @@ export type StartImportRequest = {
   payload: {
     codexHome?: string;
     backupZip: string;
+    selectedProviders?: ClientProvider[];
     replaceState: boolean;
     importAuth: boolean;
     mode: MigrationMode;
@@ -82,6 +86,7 @@ export type StartImportToNewProfileRequest = {
   payload: {
     codexHome?: string;
     backupZip: string;
+    selectedProviders?: ClientProvider[];
     replaceState: boolean;
     importAuth: boolean;
     mode: MigrationMode;
@@ -130,6 +135,7 @@ export type SamplesByDomain = {
 export type PreviewResult = {
   codexHome: string;
   backupZip: string;
+  selectedProviders: ClientProvider[];
   mode: MigrationMode;
   sessions: Stats;
   rules: Stats;
@@ -143,6 +149,7 @@ export type PreviewResult = {
 export type ExportResult = {
   codexHome: string;
   zipPath: string;
+  selectedProviders: ClientProvider[];
   copiedItems: string[];
   mode: MigrationMode;
   warnings: string[];
@@ -151,6 +158,7 @@ export type ExportResult = {
 export type ImportResult = {
   codexHome: string;
   backupZip: string;
+  selectedProviders: ClientProvider[];
   mode: MigrationMode;
   sessions: Stats;
   rules: Stats;

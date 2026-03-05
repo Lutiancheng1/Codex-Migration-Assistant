@@ -1,12 +1,15 @@
+import type { ClientProvider } from "../api/types";
 import { InfoHint } from "../components/InfoHint";
 
 type Props = {
   codexHome: string;
   backupZip: string;
+  selectedProviders: ClientProvider[];
   importProfileName: string;
   replaceState: boolean;
   importAuth: boolean;
   onChange(field: string, value: string | boolean): void;
+  onToggleProvider(providerId: ClientProvider): void;
   onPickZip(): void;
   onPickZipFromDefault(): void;
   onPreview(): void;
@@ -14,8 +17,16 @@ type Props = {
   onRunImportToNewProfile(): void;
 };
 
+const PROVIDER_OPTIONS: Array<{ id: ClientProvider; label: string }> = [
+  { id: "codex", label: "Codex" },
+  { id: "antigravity", label: "Antigravity" },
+  { id: "claude", label: "Claude" },
+  { id: "gemini", label: "Gemini" },
+  { id: "cursor", label: "Cursor" }
+];
+
 export function ImportWizard(props: Props): JSX.Element {
-  const canRun = props.backupZip.trim().length > 0;
+  const canRun = props.backupZip.trim().length > 0 && props.selectedProviders.length > 0;
   return (
     <section>
       <div className="grid">
@@ -31,6 +42,22 @@ export function ImportWizard(props: Props): JSX.Element {
             <button onClick={props.onPickZipFromDefault}>默认目录</button>
           </div>
         </label>
+        <div>
+          <div className="label-title">导入客户端</div>
+          <div className="toggle-row">
+            {PROVIDER_OPTIONS.map((item) => (
+              <label key={item.id} className="check-row">
+                <span className="check-text">{item.label}</span>
+                <input
+                  type="checkbox"
+                  checked={props.selectedProviders.includes(item.id)}
+                  onChange={() => props.onToggleProvider(item.id)}
+                  aria-label={`导入 ${item.label}`}
+                />
+              </label>
+            ))}
+          </div>
+        </div>
         <label>
           导入为新账号
           <input
@@ -72,7 +99,7 @@ export function ImportWizard(props: Props): JSX.Element {
           </label>
         </div>
       </div>
-      {!canRun ? <p className="error">请先选择备份 ZIP 文件。</p> : null}
+      {!canRun ? <p className="error">请先选择备份 ZIP 文件并至少勾选一个客户端。</p> : null}
       <div className="action-row">
         <button onClick={props.onPreview} disabled={!canRun}>预演导入</button>
         <button onClick={props.onRunImportToNewProfile} disabled={!canRun || props.importProfileName.trim().length === 0}>导入为新账号</button>

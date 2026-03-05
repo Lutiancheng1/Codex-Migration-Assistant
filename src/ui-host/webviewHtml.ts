@@ -35,14 +35,14 @@ export async function renderWebviewHtml(webview: vscode.Webview, extensionUri: v
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${n}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Codex 迁移助手</title>
+  <title>AI 客户端迁移助手</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 20px; }
     pre { white-space: pre-wrap; }
   </style>
 </head>
 <body>
-  <h2>Codex 迁移助手</h2>
+  <h2>AI 客户端迁移助手</h2>
   <p>Webview 资源尚未构建。</p>
   <pre>运行: npm install && npm run build</pre>
 </body>
@@ -60,7 +60,7 @@ export async function renderWebviewHtml(webview: vscode.Webview, extensionUri: v
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${n}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link href="${cssUri}" rel="stylesheet" />
-  <title>Codex 迁移助手</title>
+  <title>AI 客户端迁移助手</title>
 </head>
 <body>
   <div id="root"></div>

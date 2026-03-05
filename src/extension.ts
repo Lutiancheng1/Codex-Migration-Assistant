@@ -8,14 +8,18 @@ import { getLogger } from "./util/logger";
 
 export function activate(context: vscode.ExtensionContext): void {
   const logger = getLogger();
-  logger.appendLine("Codex Migration Assistant activated.");
+  logger.appendLine("AI Client Migration Assistant activated.");
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(SIDEBAR_VIEW_ID, new CodexSidebarViewProvider(context)),
-    vscode.commands.registerCommand("codexMigration.open", () => executeOpenPanel(context)),
-    vscode.commands.registerCommand("codexMigration.export", () => executeExport(context)),
-    vscode.commands.registerCommand("codexMigration.previewImport", () => executePreviewImport(context)),
-    vscode.commands.registerCommand("codexMigration.import", () => executeImport(context)),
+    vscode.commands.registerCommand("clientMigration.open", () => executeOpenPanel(context)),
+    vscode.commands.registerCommand("clientMigration.export", () => executeExport(context)),
+    vscode.commands.registerCommand("clientMigration.previewImport", () => executePreviewImport(context)),
+    vscode.commands.registerCommand("clientMigration.import", () => executeImport(context)),
+    vscode.commands.registerCommand("codexMigration.open", () => vscode.commands.executeCommand("clientMigration.open")),
+    vscode.commands.registerCommand("codexMigration.export", () => vscode.commands.executeCommand("clientMigration.export")),
+    vscode.commands.registerCommand("codexMigration.previewImport", () => vscode.commands.executeCommand("clientMigration.previewImport")),
+    vscode.commands.registerCommand("codexMigration.import", () => vscode.commands.executeCommand("clientMigration.import")),
     logger
   );
 }
