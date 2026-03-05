@@ -5,6 +5,7 @@ import * as path from "path";
 import * as fs from "fs/promises";
 import { runExport } from "../engine/exporter";
 import { runImport } from "../engine/importer";
+import { fetchAntigravityUsage, type AntigravityUsageAuthMode } from "../engine/antigravityUsage";
 import { activateProfile, createProfile, deleteProfile, getProfilesSnapshot, refreshProfilesUsage, type ProfilesSnapshot } from "../engine/profiles";
 import { writeReportBundle } from "../engine/report";
 import { previewImport } from "../engine/scanner";
@@ -182,6 +183,14 @@ async function pickBackupFromDefaultDirectory(webview: vscode.Webview, directory
 type WebviewTarget = { webview: vscode.Webview };
 let emittedUninitializedHint = false;
 let pendingRelaunchCommands: string[] = [];
+type AntigravityUsageState = {
+  mode: AntigravityUsageAuthMode;
+  error?: string;
+  summary?: import("../protocol/messages").ProfileUsageSummary;
+};
+const ANTIGRAVITY_USAGE_MODE_KEY = "clientMigration.antigravityUsage.mode";
+const ANTIGRAVITY_USAGE_TOKEN_KEY = "clientMigration.antigravityUsage.refreshToken";
+let antigravityUsageState: AntigravityUsageState = { mode: "local_extract" };
 
 function resolveCreatedProfile(
   before: ProfilesSnapshot,
@@ -212,7 +221,44 @@ async function resolveDefaultOutputDir(): Promise<string> {
   return defaultOutputDir;
 }
 
-async function emitSnapshot(webview: vscode.Webview, snapshot: ProfilesSnapshot): Promise<void> {
+async function loadAntigravityUsageState(context: vscode.ExtensionContext): Promise<AntigravityUsageState> {
+  const storedMode = context.globalState.get<string>(ANTIGRAVITY_USAGE_MODE_KEY);
+  const mode: AntigravityUsageAuthMode = storedMode === "manual_token" ? "manual_token" : "local_extract";
+  return { ...antigravityUsageState, mode };
+}
+
+async function saveAntigravityUsageAuth(context: vscode.ExtensionContext, mode: AntigravityUsageAuthMode, refreshToken?: string): Promise<void> {
+  await context.globalState.update(ANTIGRAVITY_USAGE_MODE_KEY, mode);
+  if (mode === "manual_token") {
+    const token = refreshToken?.trim();
+    if (!token) {
+      throw new Error("手动 token 模式下 refresh token 不能为空。");
+    }
+    await context.secrets.store(ANTIGRAVITY_USAGE_TOKEN_KEY, token);
+  }
+  antigravityUsageState = { ...antigravityUsageState, mode };
+}
+
+async function refreshAntigravityUsage(context: vscode.ExtensionContext): Promise<AntigravityUsageState> {
+  const current = await loadAntigravityUsageState(context);
+  let manualToken: string | undefined;
+  if (current.mode === "manual_token") {
+    manualToken = await context.secrets.get(ANTIGRAVITY_USAGE_TOKEN_KEY);
+    if (!manualToken) {
+      throw new Error("手动 token 模式未保存 refresh token，请先输入并保存。");
+    }
+  }
+  const result = await fetchAntigravityUsage(current.mode, manualToken);
+  antigravityUsageState = {
+    mode: current.mode,
+    summary: result.summary,
+    error: undefined
+  };
+  return antigravityUsageState;
+}
+
+async function emitSnapshot(context: vscode.ExtensionContext, webview: vscode.Webview, snapshot: ProfilesSnapshot): Promise<void> {
+  const usageState = await loadAntigravityUsageState(context);
   send(webview, {
     type: "STATE_SNAPSHOT",
     payload: {
@@ -221,7 +267,12 @@ async function emitSnapshot(webview: vscode.Webview, snapshot: ProfilesSnapshot)
       defaultOutputDir: await resolveDefaultOutputDir(),
       profilesRoot: snapshot.profilesRoot,
       activeProfileId: snapshot.activeProfileId,
-      profiles: snapshot.profiles
+      profiles: snapshot.profiles,
+      antigravityUsage: {
+        mode: usageState.mode,
+        summary: usageState.summary,
+        error: usageState.error
+      }
     }
   });
   for (const message of snapshot.messages) {
@@ -235,13 +286,13 @@ async function emitSnapshot(webview: vscode.Webview, snapshot: ProfilesSnapshot)
   }
 }
 
-async function emitStateSnapshot(webview: vscode.Webview, codexHomeOverride?: string): Promise<void> {
+async function emitStateSnapshot(context: vscode.ExtensionContext, webview: vscode.Webview, codexHomeOverride?: string): Promise<void> {
   const codexHome = resolveCodexHome(codexHomeOverride);
   const snapshot = await getProfilesSnapshot(codexHome);
-  await emitSnapshot(webview, snapshot);
+  await emitSnapshot(context, webview, snapshot);
 }
 
-export function bindBridge(target: WebviewTarget): vscode.Disposable {
+export function bindBridge(context: vscode.ExtensionContext, target: WebviewTarget): vscode.Disposable {
   return target.webview.onDidReceiveMessage(async (raw: unknown) => {
     const logger = getLogger();
     const parsed = requestSchema.safeParse(raw);
@@ -261,26 +312,57 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
 
     try {
       if (msg.type === "INIT") {
-        await emitStateSnapshot(target.webview);
+        await emitStateSnapshot(context, target.webview);
         return;
       }
 
       if (msg.type === "REFRESH_PROFILES") {
-        await emitStateSnapshot(target.webview, msg.payload?.codexHome);
+        await emitStateSnapshot(context, target.webview, msg.payload?.codexHome);
         return;
       }
 
       if (msg.type === "REFRESH_PROFILE_USAGE") {
         const codexHome = resolveCodexHome(msg.payload?.codexHome);
         const snapshot = await refreshProfilesUsage(codexHome, msg.payload?.profileId);
-        await emitSnapshot(target.webview, snapshot);
+        await emitSnapshot(context, target.webview, snapshot);
+        return;
+      }
+
+      if (msg.type === "SET_ANTIGRAVITY_USAGE_AUTH") {
+        await saveAntigravityUsageAuth(context, msg.payload.mode, msg.payload.refreshToken);
+        emitTaskLog(target.webview, "info", `Antigravity 用量鉴权模式已保存: ${msg.payload.mode}`);
+        const codexHome = resolveCodexHome();
+        const snapshot = await getProfilesSnapshot(codexHome);
+        await emitSnapshot(context, target.webview, snapshot);
+        return;
+      }
+
+      if (msg.type === "REFRESH_ANTIGRAVITY_USAGE") {
+        const usageState = await refreshAntigravityUsage(context);
+        if (!usageState.summary) {
+          throw new Error("Antigravity 用量刷新失败：未返回统计数据。");
+        }
+        emitTaskLog(target.webview, "info", `Antigravity 用量刷新完成（模式=${usageState.mode}）。`);
+        send(target.webview, {
+          type: "TASK_RESULT",
+          payload: {
+            action: "refreshAntigravityUsage",
+            data: {
+              mode: usageState.mode,
+              summary: usageState.summary
+            }
+          }
+        });
+        const codexHome = resolveCodexHome();
+        const snapshot = await getProfilesSnapshot(codexHome);
+        await emitSnapshot(context, target.webview, snapshot);
         return;
       }
 
       if (msg.type === "CREATE_PROFILE") {
         const codexHome = resolveCodexHome(msg.payload.codexHome);
         const snapshot = await createProfile(codexHome, msg.payload.name);
-        await emitSnapshot(target.webview, snapshot);
+        await emitSnapshot(context, target.webview, snapshot);
         return;
       }
 
@@ -300,7 +382,7 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
           type: "TASK_PROGRESS",
           payload: { step: "switch-profile", percent: 80, message: "账号切换完成，正在刷新状态" }
         });
-        await emitSnapshot(target.webview, snapshot);
+        await emitSnapshot(context, target.webview, snapshot);
         let relaunchedClients: string[] = [];
         if (pendingRelaunchCommands.length > 0) {
           const result = await relaunchKilledProcesses(pendingRelaunchCommands);
@@ -341,7 +423,7 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
       if (msg.type === "DELETE_PROFILE") {
         const codexHome = resolveCodexHome(msg.payload.codexHome);
         const snapshot = await deleteProfile(codexHome, msg.payload.profileId);
-        await emitSnapshot(target.webview, snapshot);
+        await emitSnapshot(context, target.webview, snapshot);
         return;
       }
 
@@ -455,6 +537,13 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
         if (profileName.length === 0) {
           throw new Error("新账号名称不能为空。");
         }
+        const selectedProviders = (msg.payload.selectedProviders ?? []).filter((item) => item === "codex");
+        if (selectedProviders.length === 0) {
+          throw new Error("导入为新账号仅支持 Codex，请至少勾选 Codex。");
+        }
+        if ((msg.payload.selectedProviders ?? []).some((item) => item !== "codex")) {
+          emitTaskLog(target.webview, "warn", "导入为新账号当前仅执行 Codex 数据导入，其他客户端将被忽略。");
+        }
         emitTaskLog(target.webview, "info", `开始导入到新账号（模式=${msg.payload.mode}）`);
         emitTaskLog(target.webview, "info", `目标 Codex 根目录: ${codexHome}`);
         emitTaskLog(target.webview, "info", `备份 ZIP: ${path.resolve(msg.payload.backupZip)}`);
@@ -472,7 +561,7 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
         const result = await runImport({
           codexHome: created.path,
           backupZip: msg.payload.backupZip,
-          selectedProviders: msg.payload.selectedProviders,
+          selectedProviders,
           replaceState: msg.payload.replaceState,
           importAuth: msg.payload.importAuth,
           mode: msg.payload.mode
@@ -487,7 +576,7 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
         emitTaskLog(target.webview, "info", `导入报告: ${result.reportPath}`);
         emitTaskLog(target.webview, "info", `已导入到新账号槽位 ${created.name}。如需使用，请在账号页切换到该槽位。`);
         const finalSnapshot = await getProfilesSnapshot(codexHome);
-        await emitSnapshot(target.webview, finalSnapshot);
+        await emitSnapshot(context, target.webview, finalSnapshot);
         return;
       }
 
@@ -500,6 +589,14 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
         return;
       }
     } catch (err) {
+      if (msg.type === "REFRESH_ANTIGRAVITY_USAGE") {
+        const reason = err instanceof Error ? err.message : String(err);
+        antigravityUsageState = {
+          ...(await loadAntigravityUsageState(context)),
+          summary: undefined,
+          error: reason
+        };
+      }
       const appError = asAppError(err, ErrorCode.Unknown);
       logger.appendLine(`[error] ${appError.code}: ${appError.message}`);
       emitTaskLog(target.webview, "error", `${appError.code}: ${appError.message}`);

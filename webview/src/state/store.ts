@@ -1,4 +1,13 @@
-import type { ClientProvider, ExportResult, ImportResult, PreviewResult, ProfileSummary, SwitchProfileResult } from "../api/types";
+import type {
+  ClientProvider,
+  ExportResult,
+  ImportResult,
+  PreviewResult,
+  ProfileSummary,
+  ProfileUsageSummary,
+  SwitchProfileResult,
+  UsageAuthMode
+} from "../api/types";
 
 type ResultData = ExportResult | PreviewResult | ImportResult | SwitchProfileResult;
 
@@ -8,6 +17,10 @@ export type UiState = {
   profilesRoot: string;
   profiles: ProfileSummary[];
   activeProfileId?: string;
+  antigravityUsageMode: UsageAuthMode;
+  antigravityManualToken: string;
+  antigravityUsageSummary?: ProfileUsageSummary;
+  antigravityUsageError?: string;
   backupBeforeSwitch: boolean;
   newProfileName: string;
   outputDir: string;
@@ -32,6 +45,10 @@ export const initialState: UiState = {
   profilesRoot: "",
   profiles: [],
   activeProfileId: undefined,
+  antigravityUsageMode: "local_extract",
+  antigravityManualToken: "",
+  antigravityUsageSummary: undefined,
+  antigravityUsageError: undefined,
   backupBeforeSwitch: true,
   newProfileName: "",
   outputDir: "",

@@ -9,7 +9,7 @@
 - 导入前预演（冲突/锁定样本）
 - 导入为新账号（Codex 槽位）
 - Codex 多账号槽位：新增、切换、切换并合并、删除
-- 用量查询（当前为 Codex；Antigravity 为接入中）
+- 用量查询：Codex + Antigravity（支持本地提取 / 手动 token）
 
 ## 兼容说明（命令 ID 迁移）
 

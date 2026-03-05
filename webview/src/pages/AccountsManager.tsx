@@ -1,17 +1,23 @@
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import type { ProfileSummary, ProfileUsageWindow } from "../api/types";
+import type { ProfileSummary, ProfileUsageSummary, ProfileUsageWindow, UsageAuthMode } from "../api/types";
 import { InfoHint } from "../components/InfoHint";
 
 type Props = {
   profilesRoot: string;
   profiles: ProfileSummary[];
   activeProfileId?: string;
+  antigravityUsageMode: UsageAuthMode;
+  antigravityManualToken: string;
+  antigravityUsageSummary?: ProfileUsageSummary;
+  antigravityUsageError?: string;
   backupBeforeSwitch: boolean;
   newProfileName: string;
   onChange(field: string, value: string | boolean): void;
   onRefresh(): void;
   onRefreshUsage(profileId?: string): void;
+  onRefreshAntigravityUsage(): void;
+  onSaveAntigravityUsageAuth(): void;
   onCreate(): void;
   onActivate(profileId: string): void;
   onActivateAndMerge(profileId: string): void;
@@ -168,6 +174,41 @@ export function AccountsManager(props: Props): JSX.Element {
           <option value={15 * 60 * 1000}>每 15 分钟</option>
           <option value={30 * 60 * 1000}>每 30 分钟</option>
         </select>
+      </div>
+
+      <div className="card" style={{ marginBottom: "12px" }}>
+        <h3 style={{ marginBottom: "8px" }}>Antigravity 用量</h3>
+        <div className="row" style={{ alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{ minWidth: "72px" }}>鉴权模式</span>
+          <select
+            value={props.antigravityUsageMode}
+            onChange={(e) => props.onChange("antigravityUsageMode", e.target.value)}
+            style={{ width: "auto" }}
+          >
+            <option value="local_extract">本地提取</option>
+            <option value="manual_token">手动 token</option>
+          </select>
+          <button onClick={props.onSaveAntigravityUsageAuth}>保存</button>
+          <button onClick={props.onRefreshAntigravityUsage}>刷新 Antigravity 用量</button>
+        </div>
+        {props.antigravityUsageMode === "manual_token" ? (
+          <div style={{ marginTop: "8px" }}>
+            <input
+              placeholder="输入 Antigravity refresh token（保存到 SecretStorage）"
+              value={props.antigravityManualToken}
+              onChange={(e) => props.onChange("antigravityManualToken", e.target.value)}
+            />
+          </div>
+        ) : null}
+        {props.antigravityUsageSummary ? (
+          <div style={{ marginTop: "8px", display: "grid", gap: "4px" }}>
+            <p><strong>套餐：</strong>{props.antigravityUsageSummary.planType || "-"}</p>
+            <p><strong>5小时剩余：</strong>{formatUsagePercent(props.antigravityUsageSummary.fiveHour)}</p>
+            <p><strong>7天剩余：</strong>{formatUsagePercent(props.antigravityUsageSummary.oneWeek)}</p>
+            <p><strong>更新时间：</strong>{formatTime(props.antigravityUsageSummary.fetchedAt)}</p>
+          </div>
+        ) : null}
+        {props.antigravityUsageError ? <p className="warning" style={{ marginTop: "8px" }}>{props.antigravityUsageError}</p> : null}
       </div>
 
       <div className="accounts-table-wrap">

@@ -57,6 +57,9 @@ export default function App(): JSX.Element {
           profilesRoot: msg.payload.profilesRoot,
           activeProfileId: msg.payload.activeProfileId,
           profiles: msg.payload.profiles,
+          antigravityUsageMode: msg.payload.antigravityUsage?.mode ?? s.antigravityUsageMode,
+          antigravityUsageSummary: msg.payload.antigravityUsage?.summary,
+          antigravityUsageError: msg.payload.antigravityUsage?.error,
           outputDir: normalizeOutputDirValue(s.outputDir).trim().length > 0 ? normalizeOutputDirValue(s.outputDir) : msg.payload.defaultOutputDir
         }));
         return;
@@ -87,6 +90,16 @@ export default function App(): JSX.Element {
       }
 
       if (msg.type === "TASK_RESULT") {
+        if (msg.payload.action === "refreshAntigravityUsage") {
+          const data = msg.payload.data as { mode: "local_extract" | "manual_token"; summary: any };
+          setState((s) => ({
+            ...s,
+            antigravityUsageMode: data.mode,
+            antigravityUsageSummary: data.summary,
+            antigravityUsageError: undefined
+          }));
+          return;
+        }
         if (msg.payload.action === "killProcesses") {
           // 接续之前的挂起操作
           if (lastRequestRef.current) {
@@ -171,11 +184,25 @@ export default function App(): JSX.Element {
                 profilesRoot={state.profilesRoot}
                 profiles={state.profiles}
                 activeProfileId={state.activeProfileId}
+                antigravityUsageMode={state.antigravityUsageMode}
+                antigravityManualToken={state.antigravityManualToken}
+                antigravityUsageSummary={state.antigravityUsageSummary}
+                antigravityUsageError={state.antigravityUsageError}
                 backupBeforeSwitch={state.backupBeforeSwitch}
                 newProfileName={state.newProfileName}
                 onChange={onChange}
                 onRefresh={() => dispatch({ type: "REFRESH_PROFILES", payload: { codexHome: state.codexHome } })}
                 onRefreshUsage={(profileId) => dispatch({ type: "REFRESH_PROFILE_USAGE", payload: { codexHome: state.codexHome, profileId } })}
+                onRefreshAntigravityUsage={() => dispatch({ type: "REFRESH_ANTIGRAVITY_USAGE" })}
+                onSaveAntigravityUsageAuth={() =>
+                  dispatch({
+                    type: "SET_ANTIGRAVITY_USAGE_AUTH",
+                    payload: {
+                      mode: state.antigravityUsageMode,
+                      refreshToken: state.antigravityManualToken
+                    }
+                  })
+                }
                 onCreate={() => {
                   if (state.newProfileName.trim().length === 0) {
                     pushLocalError("请输入新账号名称。");
@@ -327,6 +354,10 @@ export default function App(): JSX.Element {
                     pushLocalError("请先选择备份 ZIP 文件，再执行导入。");
                     return;
                   }
+                  if (!state.importProviders.includes("codex")) {
+                    pushLocalError("导入为新账号仅支持 Codex，请先勾选 Codex 客户端。");
+                    return;
+                  }
                   const profileName = state.importProfileName.trim();
                   if (profileName.length === 0) {
                     pushLocalError("请先输入新账号名称。");
@@ -337,7 +368,7 @@ export default function App(): JSX.Element {
                     payload: {
                       codexHome: state.codexHome,
                       backupZip: state.backupZip,
-                      selectedProviders: state.importProviders,
+                      selectedProviders: ["codex"],
                       replaceState: state.replaceState,
                       importAuth: state.importAuth,
                       mode: "core",

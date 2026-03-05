@@ -2,6 +2,7 @@ import type { AppError } from "./errors";
 
 export type MigrationMode = "core";
 export type ClientProvider = "codex" | "antigravity" | "claude" | "gemini" | "cursor";
+export type UsageAuthMode = "local_extract" | "manual_token";
 
 export type ProfileUsageWindow = {
   usedPercent: number;
@@ -39,6 +40,11 @@ export type ProfileSummary = {
 export type InitRequest = { type: "INIT" };
 export type RefreshProfilesRequest = { type: "REFRESH_PROFILES"; payload?: { codexHome?: string } };
 export type RefreshProfileUsageRequest = { type: "REFRESH_PROFILE_USAGE"; payload?: { codexHome?: string; profileId?: string } };
+export type RefreshAntigravityUsageRequest = { type: "REFRESH_ANTIGRAVITY_USAGE" };
+export type SetAntigravityUsageAuthRequest = {
+  type: "SET_ANTIGRAVITY_USAGE_AUTH";
+  payload: { mode: UsageAuthMode; refreshToken?: string };
+};
 export type PickPathRequest = { type: "PICK_PATH"; payload: { kind: "folder" | "file"; title: string; filters?: Record<string, string[]> } };
 export type PickDefaultBackupRequest = { type: "PICK_DEFAULT_BACKUP"; payload?: { directory?: string } };
 export type OpenInOsRequest = { type: "OPEN_IN_OS"; payload: { path: string } };
@@ -106,6 +112,8 @@ export type RequestMessage =
   | InitRequest
   | RefreshProfilesRequest
   | RefreshProfileUsageRequest
+  | RefreshAntigravityUsageRequest
+  | SetAntigravityUsageAuthRequest
   | PickPathRequest
   | PickDefaultBackupRequest
   | OpenInOsRequest
@@ -188,6 +196,11 @@ export type StateSnapshotEvent = {
     profilesRoot: string;
     activeProfileId?: string;
     profiles: ProfileSummary[];
+    antigravityUsage?: {
+      mode: UsageAuthMode;
+      summary?: ProfileUsageSummary;
+      error?: string;
+    };
   };
 };
 
@@ -218,8 +231,14 @@ export type TaskLogEvent = {
 export type TaskResultEvent = {
   type: "TASK_RESULT";
   payload: {
-    action: "export" | "previewImport" | "import" | "switchProfile" | "killProcesses";
-    data: ExportResult | PreviewResult | ImportResult | SwitchProfileResult | { killedCount: number };
+    action: "export" | "previewImport" | "import" | "switchProfile" | "killProcesses" | "refreshAntigravityUsage";
+    data:
+      | ExportResult
+      | PreviewResult
+      | ImportResult
+      | SwitchProfileResult
+      | { killedCount: number }
+      | { mode: UsageAuthMode; summary: ProfileUsageSummary };
   };
 };
 

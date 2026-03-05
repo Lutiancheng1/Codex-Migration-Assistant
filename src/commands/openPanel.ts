@@ -10,7 +10,7 @@ export async function executeOpenPanel(context: vscode.ExtensionContext): Promis
     return;
   }
 
-  const bridge = bindBridge(panel);
+  const bridge = bindBridge(context, panel);
   bridgeMap.set(panel, bridge);
   panel.onDidDispose(() => {
     bridge.dispose();

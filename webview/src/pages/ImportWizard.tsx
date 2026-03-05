@@ -102,7 +102,13 @@ export function ImportWizard(props: Props): JSX.Element {
       {!canRun ? <p className="error">请先选择备份 ZIP 文件并至少勾选一个客户端。</p> : null}
       <div className="action-row">
         <button onClick={props.onPreview} disabled={!canRun}>预演导入</button>
-        <button onClick={props.onRunImportToNewProfile} disabled={!canRun || props.importProfileName.trim().length === 0}>导入为新账号</button>
+        <button
+          onClick={props.onRunImportToNewProfile}
+          disabled={!canRun || props.importProfileName.trim().length === 0 || !props.selectedProviders.includes("codex")}
+          title={!props.selectedProviders.includes("codex") ? "导入为新账号仅支持 Codex" : undefined}
+        >
+          导入为新账号（仅 Codex）
+        </button>
         <button className="primary" onClick={props.onRunImport} disabled={!canRun}>执行导入</button>
       </div>
     </section>

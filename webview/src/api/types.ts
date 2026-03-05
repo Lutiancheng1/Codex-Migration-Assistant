@@ -1,5 +1,6 @@
 export type MigrationMode = "core";
 export type ClientProvider = "codex" | "antigravity" | "claude" | "gemini" | "cursor";
+export type UsageAuthMode = "local_extract" | "manual_token";
 
 export type ProfileUsageWindow = {
   usedPercent: number;
@@ -38,6 +39,8 @@ export type RequestMessage =
   | { type: "INIT" }
   | { type: "REFRESH_PROFILES"; payload?: { codexHome?: string } }
   | { type: "REFRESH_PROFILE_USAGE"; payload?: { codexHome?: string; profileId?: string } }
+  | { type: "REFRESH_ANTIGRAVITY_USAGE" }
+  | { type: "SET_ANTIGRAVITY_USAGE_AUTH"; payload: { mode: UsageAuthMode; refreshToken?: string } }
   | { type: "PICK_PATH"; payload: { kind: "folder" | "file"; title: string; filters?: Record<string, string[]> } }
   | { type: "PICK_DEFAULT_BACKUP"; payload?: { directory?: string } }
   | { type: "OPEN_IN_OS"; payload: { path: string } }
@@ -165,6 +168,11 @@ export type ResponseMessage =
       profilesRoot: string;
       activeProfileId?: string;
       profiles: ProfileSummary[];
+      antigravityUsage?: {
+        mode: UsageAuthMode;
+        summary?: ProfileUsageSummary;
+        error?: string;
+      };
     };
   }
   | { type: "PATH_PICKED"; payload: { path?: string } }
@@ -173,8 +181,14 @@ export type ResponseMessage =
   | {
     type: "TASK_RESULT";
     payload: {
-      action: "export" | "previewImport" | "import" | "switchProfile" | "killProcesses";
-      data: ExportResult | PreviewResult | ImportResult | SwitchProfileResult | { killedCount: number };
+      action: "export" | "previewImport" | "import" | "switchProfile" | "killProcesses" | "refreshAntigravityUsage";
+      data:
+      | ExportResult
+      | PreviewResult
+      | ImportResult
+      | SwitchProfileResult
+      | { killedCount: number }
+      | { mode: UsageAuthMode; summary: ProfileUsageSummary };
     };
   }
   | { type: "TASK_ERROR"; payload: { code: string; message: string; details?: Record<string, unknown> } };

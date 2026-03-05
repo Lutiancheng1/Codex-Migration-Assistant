@@ -1,5 +1,6 @@
 import { z } from "zod";
 const providerSchema = z.enum(["codex", "antigravity", "claude", "gemini", "cursor"]);
+const usageAuthModeSchema = z.enum(["local_extract", "manual_token"]);
 
 export const requestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("INIT") }),
@@ -19,6 +20,14 @@ export const requestSchema = z.discriminatedUnion("type", [
         profileId: z.string().optional()
       })
       .optional()
+  }),
+  z.object({ type: z.literal("REFRESH_ANTIGRAVITY_USAGE") }),
+  z.object({
+    type: z.literal("SET_ANTIGRAVITY_USAGE_AUTH"),
+    payload: z.object({
+      mode: usageAuthModeSchema,
+      refreshToken: z.string().optional()
+    })
   }),
   z.object({
     type: z.literal("PICK_PATH"),
