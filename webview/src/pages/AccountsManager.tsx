@@ -191,7 +191,7 @@ export function AccountsManager(props: Props): JSX.Element {
       </div>
 
       <div className="card" style={{ marginBottom: "12px" }}>
-        <h3 style={{ marginBottom: "8px" }}>Antigravity 用量</h3>
+        <h3 style={{ marginBottom: "8px" }}>Antigravity 独立用量</h3>
         <div className="row" style={{ alignItems: "center", flexWrap: "wrap" }}>
           <span style={{ minWidth: "72px" }}>鉴权模式</span>
           <select
@@ -221,10 +221,11 @@ export function AccountsManager(props: Props): JSX.Element {
             <p><strong>7天剩余：</strong>{formatUsagePercent(props.antigravityUsageSummary.oneWeek)}</p>
             <p><strong>更新时间：</strong>{formatTime(props.antigravityUsageSummary.fetchedAt)}</p>
           </div>
-        ) : null}
+        ) : <p style={{ marginTop: "8px" }}>尚未刷新 Antigravity 用量。</p>}
         {props.antigravityUsageError ? <p className="warning" style={{ marginTop: "8px" }}>{props.antigravityUsageError}</p> : null}
       </div>
 
+      <h3 style={{ margin: "8px 0" }}>Codex 账号槽位与用量</h3>
       <div className="accounts-table-wrap">
         <table className="accounts-table">
           <thead>

@@ -18,6 +18,7 @@ export type UiState = {
   profilesRoot: string;
   profiles: ProfileSummary[];
   activeProfileId?: string;
+  availableProviders: Record<ClientProvider, boolean>;
   antigravityProfilesRoot: string;
   antigravityProfiles: AntigravityProfileSummary[];
   activeAntigravityProfileId?: string;
@@ -50,6 +51,13 @@ export const initialState: UiState = {
   profilesRoot: "",
   profiles: [],
   activeProfileId: undefined,
+  availableProviders: {
+    codex: true,
+    antigravity: true,
+    claude: true,
+    gemini: true,
+    cursor: true
+  },
   antigravityProfilesRoot: "",
   antigravityProfiles: [],
   activeAntigravityProfileId: undefined,

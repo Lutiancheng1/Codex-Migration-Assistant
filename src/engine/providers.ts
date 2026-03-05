@@ -1,6 +1,7 @@
 import * as os from "os";
 import * as path from "path";
 import type { ClientProvider } from "../protocol/messages";
+import { statSafe } from "./fileTree";
 
 export type ProviderTarget = {
   key: string;
@@ -119,4 +120,28 @@ export function getProvider(providerId: ClientProvider): ProviderDescriptor {
     throw new Error(`未知客户端: ${providerId}`);
   }
   return found;
+}
+
+export async function detectAvailableProviders(codexHome: string): Promise<Record<ClientProvider, boolean>> {
+  const out: Record<ClientProvider, boolean> = {
+    codex: false,
+    antigravity: false,
+    claude: false,
+    gemini: false,
+    cursor: false
+  };
+
+  for (const provider of PROVIDERS) {
+    const targets = provider.resolveTargets(codexHome);
+    let available = false;
+    for (const target of targets) {
+      const st = await statSafe(target.sourcePath);
+      if (st?.isDirectory()) {
+        available = true;
+        break;
+      }
+    }
+    out[provider.id] = available;
+  }
+  return out;
 }

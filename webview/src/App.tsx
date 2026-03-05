@@ -39,6 +39,7 @@ export default function App(): JSX.Element {
   const pickTargetRef = useRef<"outputDir" | "backupZip">("outputDir");
   const lastRequestRef = useRef<RequestMessage | undefined>();
   const [pendingLockDetails, setPendingLockDetails] = useState<LockDetails | undefined>();
+  const antigravityUsageAutoRefreshedRef = useRef(false);
 
   function dispatch(message: RequestMessage): void {
     lastRequestRef.current = message;
@@ -57,6 +58,7 @@ export default function App(): JSX.Element {
           profilesRoot: msg.payload.profilesRoot,
           activeProfileId: msg.payload.activeProfileId,
           profiles: msg.payload.profiles,
+          availableProviders: msg.payload.availableProviders,
           antigravityProfilesRoot: msg.payload.antigravityProfilesRoot,
           activeAntigravityProfileId: msg.payload.activeAntigravityProfileId,
           antigravityProfiles: msg.payload.antigravityProfiles,
@@ -65,6 +67,10 @@ export default function App(): JSX.Element {
           antigravityUsageError: msg.payload.antigravityUsage?.error,
           outputDir: normalizeOutputDirValue(s.outputDir).trim().length > 0 ? normalizeOutputDirValue(s.outputDir) : msg.payload.defaultOutputDir
         }));
+        if (!antigravityUsageAutoRefreshedRef.current && !msg.payload.antigravityUsage?.summary && !msg.payload.antigravityUsage?.error) {
+          antigravityUsageAutoRefreshedRef.current = true;
+          dispatch({ type: "REFRESH_ANTIGRAVITY_USAGE" });
+        }
         return;
       }
 
@@ -147,6 +153,9 @@ export default function App(): JSX.Element {
 
   function toggleProvider(field: "exportProviders" | "importProviders", providerId: "codex" | "antigravity" | "claude" | "gemini" | "cursor"): void {
     setState((s) => {
+      if (!s.availableProviders[providerId]) {
+        return s;
+      }
       const next = new Set(s[field]);
       if (next.has(providerId)) {
         next.delete(providerId);
@@ -283,6 +292,7 @@ export default function App(): JSX.Element {
                 includeState={state.includeState}
                 includeAuth={state.includeAuth}
                 selectedProviders={state.exportProviders}
+                availableProviders={state.availableProviders}
                 onChange={onChange}
                 onToggleProvider={(providerId) => toggleProvider("exportProviders", providerId)}
                 onPickOutputDir={() => {
@@ -330,6 +340,7 @@ export default function App(): JSX.Element {
                 codexHome={state.codexHome}
                 backupZip={state.backupZip}
                 selectedProviders={state.importProviders}
+                availableProviders={state.availableProviders}
                 importProfileName={state.importProfileName}
                 replaceState={state.replaceState}
                 importAuth={state.importAuth}

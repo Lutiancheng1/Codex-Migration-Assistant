@@ -14,6 +14,7 @@ import {
   type AntigravityProfilesSnapshot
 } from "../engine/antigravityProfiles";
 import { activateProfile, createProfile, deleteProfile, getProfilesSnapshot, refreshProfilesUsage, type ProfilesSnapshot } from "../engine/profiles";
+import { detectAvailableProviders } from "../engine/providers";
 import { writeReportBundle } from "../engine/report";
 import { previewImport } from "../engine/scanner";
 import { forceKillProcesses, relaunchKilledProcesses } from "../engine/processGuard";
@@ -281,6 +282,7 @@ async function emitSnapshot(
       profilesRoot: snapshot.profilesRoot,
       activeProfileId: snapshot.activeProfileId,
       profiles: snapshot.profiles,
+      availableProviders: await detectAvailableProviders(snapshot.codexHome),
       antigravityProfilesRoot: agSnapshot.profilesRoot,
       activeAntigravityProfileId: agSnapshot.activeProfileId,
       antigravityProfiles: agSnapshot.profiles,

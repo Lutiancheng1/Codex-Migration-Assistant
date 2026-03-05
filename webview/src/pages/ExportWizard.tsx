@@ -5,6 +5,7 @@ type Props = {
   codexHome: string;
   outputDir: string;
   selectedProviders: ClientProvider[];
+  availableProviders: Record<ClientProvider, boolean>;
   includeState: boolean;
   includeAuth: boolean;
   onChange(field: string, value: string | boolean): void;
@@ -28,10 +29,7 @@ export function ExportWizard(props: Props): JSX.Element {
     <section>
       <h3>配置与执行</h3>
       <div className="grid">
-        <label>
-          Codex 目录
-          <input value={props.codexHome} onChange={(e) => props.onChange("codexHome", e.target.value)} />
-        </label>
+        <p><strong>Codex 目录（自动探测）：</strong> {props.codexHome || "未解析"}</p>
         <label>
           导出目录
           <div className="file-pick-row">
@@ -52,11 +50,13 @@ export function ExportWizard(props: Props): JSX.Element {
           <div className="toggle-row">
             {PROVIDER_OPTIONS.map((item) => (
               <label key={item.id} className="check-row">
-                <span className="check-text">{item.label}</span>
+                <span className="check-text">{item.label}{props.availableProviders[item.id] ? "" : "（未检测）"}</span>
                 <input
                   type="checkbox"
                   checked={props.selectedProviders.includes(item.id)}
+                  disabled={!props.availableProviders[item.id]}
                   onChange={() => props.onToggleProvider(item.id)}
+                  title={props.availableProviders[item.id] ? undefined : "未检测到本机目录"}
                   aria-label={`导出 ${item.label}`}
                 />
               </label>

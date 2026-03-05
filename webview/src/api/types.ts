@@ -191,6 +191,7 @@ export type ResponseMessage =
       profilesRoot: string;
       activeProfileId?: string;
       profiles: ProfileSummary[];
+      availableProviders: Record<ClientProvider, boolean>;
       antigravityProfilesRoot: string;
       activeAntigravityProfileId?: string;
       antigravityProfiles: AntigravityProfileSummary[];

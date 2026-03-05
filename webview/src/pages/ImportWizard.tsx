@@ -5,6 +5,7 @@ type Props = {
   codexHome: string;
   backupZip: string;
   selectedProviders: ClientProvider[];
+  availableProviders: Record<ClientProvider, boolean>;
   importProfileName: string;
   replaceState: boolean;
   importAuth: boolean;
@@ -30,10 +31,7 @@ export function ImportWizard(props: Props): JSX.Element {
   return (
     <section>
       <div className="grid">
-        <label>
-          Codex 目录
-          <input value={props.codexHome} onChange={(e) => props.onChange("codexHome", e.target.value)} />
-        </label>
+        <p><strong>Codex 目录（自动探测）：</strong> {props.codexHome || "未解析"}</p>
         <label>
           备份 ZIP
           <div className="row import-zip-row">
@@ -47,11 +45,13 @@ export function ImportWizard(props: Props): JSX.Element {
           <div className="toggle-row">
             {PROVIDER_OPTIONS.map((item) => (
               <label key={item.id} className="check-row">
-                <span className="check-text">{item.label}</span>
+                <span className="check-text">{item.label}{props.availableProviders[item.id] ? "" : "（未检测）"}</span>
                 <input
                   type="checkbox"
                   checked={props.selectedProviders.includes(item.id)}
+                  disabled={!props.availableProviders[item.id]}
                   onChange={() => props.onToggleProvider(item.id)}
+                  title={props.availableProviders[item.id] ? undefined : "未检测到本机目录"}
                   aria-label={`导入 ${item.label}`}
                 />
               </label>
