@@ -510,7 +510,9 @@ td {
   width: 40px;
   text-align: center;
   padding: 6px 0;
-  font-size: 16px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
   line-height: 1;
 }
 
@@ -542,6 +544,130 @@ td {
 .action-delete-confirm {
   display: grid;
   gap: 6px;
+}
+
+.thread-cleanup-panel {
+  margin-top: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.thread-cleanup-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--card) 94%, transparent);
+}
+
+.thread-cleanup-toggle h3 {
+  margin: 0;
+}
+
+.thread-cleanup-toggle-icon {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.thread-cleanup-help {
+  color: var(--muted);
+}
+
+.thread-cleanup-input {
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  color: var(--fg);
+  padding: 8px;
+}
+
+.thread-cleanup-controls {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  align-items: end;
+}
+
+.thread-cleanup-quick-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.thread-cleanup-preview {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.thread-cleanup-preview-summary {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--muted);
+}
+
+.thread-cleanup-profile-list {
+  display: grid;
+  gap: 8px;
+}
+
+.thread-cleanup-profile-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--card) 94%, transparent);
+}
+
+.thread-cleanup-profile-card h4 {
+  margin: 0 0 6px;
+}
+
+.thread-cleanup-profile-card ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.thread-cleanup-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.thread-cleanup-confirm {
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: 10px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.thread-cleanup-confirm-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.thread-cleanup-result {
+  border-top: 1px dashed var(--line);
+  padding-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.thread-cleanup-modal-content {
+  width: min(960px, 92vw);
+  max-height: 84vh;
+  overflow: auto;
 }
 
 .import-zip-row {

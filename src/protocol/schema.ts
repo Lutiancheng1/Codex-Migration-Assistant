@@ -108,6 +108,26 @@ export const requestSchema = z.discriminatedUnion("type", [
     })
   }),
   z.object({
+    type: z.literal("PREVIEW_THREAD_CLEANUP"),
+    payload: z.object({
+      codexHome: z.string().optional(),
+      threadIds: z.array(z.string().min(1)).min(1),
+      scope: z.enum(["active", "all", "single"]),
+      profileId: z.string().min(1).optional()
+    })
+  }),
+  z.object({
+    type: z.literal("START_THREAD_CLEANUP"),
+    payload: z.object({
+      codexHome: z.string().optional(),
+      threadIds: z.array(z.string().min(1)).min(1),
+      scope: z.enum(["active", "all", "single"]),
+      profileId: z.string().min(1).optional(),
+      backupEnabled: z.boolean(),
+      applyMode: z.enum(["killNow", "restartLater"])
+    })
+  }),
+  z.object({
     type: z.literal("KILL_PROCESSES"),
     payload: z.object({
       pids: z.array(z.number()),

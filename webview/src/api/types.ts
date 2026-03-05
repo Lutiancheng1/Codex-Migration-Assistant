@@ -1,5 +1,7 @@
 export type MigrationMode = "core" | "enhanced";
 export type ExportScope = "active" | "all" | "single";
+export type ThreadCleanupScope = "active" | "all" | "single";
+export type ThreadCleanupApplyMode = "killNow" | "restartLater";
 
 export type ProfileUsageWindow = {
   usedPercent: number;
@@ -90,6 +92,26 @@ export type RequestMessage =
       profileName: string;
     };
   }
+  | {
+    type: "PREVIEW_THREAD_CLEANUP";
+    payload: {
+      codexHome?: string;
+      threadIds: string[];
+      scope: ThreadCleanupScope;
+      profileId?: string;
+    };
+  }
+  | {
+    type: "START_THREAD_CLEANUP";
+    payload: {
+      codexHome?: string;
+      threadIds: string[];
+      scope: ThreadCleanupScope;
+      profileId?: string;
+      backupEnabled: boolean;
+      applyMode: ThreadCleanupApplyMode;
+    };
+  }
   | { type: "KILL_PROCESSES"; payload: { pids: number[]; commands?: string[] } };
 
 export type Stats = {
@@ -161,6 +183,79 @@ export type SwitchProfileResult = {
   messages: string[];
 };
 
+export type ThreadCleanupThreadMatch = {
+  id: string;
+  title?: string;
+  archived: boolean;
+  rolloutPath?: string;
+  rolloutFiles: string[];
+};
+
+export type ThreadCleanupProfilePreview = {
+  profileId: string;
+  profileName: string;
+  codexHome: string;
+  matches: ThreadCleanupThreadMatch[];
+  matchedFileCount: number;
+  missingThreadIds: string[];
+  potentialBusyProcesses: Array<{
+    pid: number;
+    command: string;
+  }>;
+};
+
+export type ThreadCleanupPreviewResult = {
+  codexHome: string;
+  scope: ThreadCleanupScope;
+  profileId?: string;
+  threadIds: string[];
+  profiles: ThreadCleanupProfilePreview[];
+  notFoundThreadIds: string[];
+  totalMatchedThreads: number;
+  totalMatchedFiles: number;
+};
+
+export type ThreadCleanupProfileResult = {
+  profileId: string;
+  profileName: string;
+  codexHome: string;
+  deleted: {
+    threads: number;
+    logs: number;
+    dynamicTools: number;
+    files: number;
+    globalStateTitles: number;
+    globalStateOrder: number;
+  };
+  verification: {
+    dbResidual: number;
+    fileResidual: number;
+    globalStateResidual: number;
+    clean: boolean;
+  };
+  locked: boolean;
+  busyProcesses: Array<{
+    pid: number;
+    command: string;
+  }>;
+  warnings: string[];
+  errors: string[];
+};
+
+export type ThreadCleanupResult = {
+  codexHome: string;
+  scope: ThreadCleanupScope;
+  profileId?: string;
+  threadIds: string[];
+  backupEnabled: boolean;
+  backupPath?: string;
+  applyMode: ThreadCleanupApplyMode;
+  killTriggered: boolean;
+  killedCount: number;
+  notFoundThreadIds: string[];
+  profiles: ThreadCleanupProfileResult[];
+};
+
 export type ResponseMessage =
   | {
     type: "STATE_SNAPSHOT";
@@ -179,8 +274,8 @@ export type ResponseMessage =
   | {
     type: "TASK_RESULT";
     payload: {
-      action: "export" | "previewImport" | "import" | "switchProfile" | "killProcesses";
-      data: ExportResult | PreviewResult | ImportResult | SwitchProfileResult | { killedCount: number };
+      action: "export" | "previewImport" | "import" | "switchProfile" | "killProcesses" | "threadCleanupPreview" | "threadCleanup";
+      data: ExportResult | PreviewResult | ImportResult | SwitchProfileResult | ThreadCleanupPreviewResult | ThreadCleanupResult | { killedCount: number };
     };
   }
   | { type: "TASK_ERROR"; payload: { code: string; message: string; details?: Record<string, unknown> } };

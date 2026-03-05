@@ -1,6 +1,15 @@
-import type { ExportResult, ImportResult, PreviewResult, ProfileSummary, SwitchProfileResult } from "../api/types";
+import type {
+  ExportResult,
+  ImportResult,
+  PreviewResult,
+  ProfileSummary,
+  SwitchProfileResult,
+  ThreadCleanupPreviewResult,
+  ThreadCleanupResult,
+  ThreadCleanupScope
+} from "../api/types";
 
-type ResultData = ExportResult | PreviewResult | ImportResult | SwitchProfileResult;
+type ResultData = ExportResult | PreviewResult | ImportResult | SwitchProfileResult | ThreadCleanupPreviewResult | ThreadCleanupResult;
 
 export type UiState = {
   codexHome: string;
@@ -12,6 +21,12 @@ export type UiState = {
   newProfileName: string;
   outputDir: string;
   exportScope: "active" | "all";
+  threadCleanupInput: string;
+  threadCleanupScope: ThreadCleanupScope;
+  threadCleanupProfileId: string;
+  threadCleanupBackupEnabled: boolean;
+  threadCleanupPreview?: ThreadCleanupPreviewResult;
+  threadCleanupResult?: ThreadCleanupResult;
   backupZip: string;
   importProfileName: string;
   includeState: boolean;
@@ -35,6 +50,12 @@ export const initialState: UiState = {
   newProfileName: "",
   outputDir: "",
   exportScope: "active",
+  threadCleanupInput: "",
+  threadCleanupScope: "all",
+  threadCleanupProfileId: "",
+  threadCleanupBackupEnabled: true,
+  threadCleanupPreview: undefined,
+  threadCleanupResult: undefined,
   backupZip: "",
   importProfileName: "",
   includeState: false,

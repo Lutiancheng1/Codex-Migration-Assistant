@@ -1,5 +1,31 @@
+﻿# Workspace/source
 .vscode/**
+.github/**
 src/**
-webview/src/**
+webview/**
 test/**
+docs/**
+
+# Build artifacts not needed in VSIX
 *.map
+**/*.ts
+**/*.tsx
+
+# Node package noise
+node_modules/**/.github/**
+node_modules/**/test/**
+node_modules/**/tests/**
+node_modules/**/__tests__/**
+node_modules/**/benchmark/**
+node_modules/**/benchmarks/**
+node_modules/**/example/**
+node_modules/**/examples/**
+node_modules/**/*.md
+node_modules/**/*.markdown
+node_modules/**/*.map
+node_modules/**/*.ts
+node_modules/**/*.tsx
+
+# Keep extension docs
+!README.md
+!LICENSE

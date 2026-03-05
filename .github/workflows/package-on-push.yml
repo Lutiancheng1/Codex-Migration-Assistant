@@ -9,7 +9,20 @@ on:
 jobs:
   package:
     if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]') }}
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: win32-x64
+            artifact_suffix: win32-x64
+          - os: macos-13
+            target: darwin-x64
+            artifact_suffix: darwin-x64
+          - os: ubuntu-latest
+            target: linux-x64
+            artifact_suffix: linux-x64
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: read
 
@@ -27,12 +40,14 @@ jobs:
         run: npm ci
 
       - name: Build and Package Extension
-        run: npm run package:vsix
+        run: |
+          npm run build
+          npx @vscode/vsce package --target ${{ matrix.target }}
 
       - name: Upload VSIX Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: vsix-${{ github.ref_name }}-${{ github.run_number }}
+          name: vsix-${{ github.ref_name }}-${{ matrix.artifact_suffix }}-${{ github.run_number }}
           path: "*.vsix"
           if-no-files-found: error
           retention-days: 14

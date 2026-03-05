@@ -1,9 +1,14 @@
 {
   "name": "codex-migration-assistant",
-  "displayName": "Codex 迁移助手",
-  "description": "在 macOS 与 Windows 间可视化迁移 Codex 数据（支持 Codex App 与 VS Code 扩展）",
-  "version": "0.1.0",
+  "displayName": "Codex Migration Assistant",
+  "description": "Codex-only migration assistant for profile management, import/export, and session cleanup by Session ID.",
+  "version": "0.1.1",
   "publisher": "local",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Lutiancheng1/Codex-Migration-Assistant.git"
+  },
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
@@ -18,8 +23,8 @@
     "backup",
     "import",
     "export",
-    "迁移",
-    "备份"
+    "session-cleanup",
+    "conversation-cleanup"
   ],
   "activationEvents": [
     "onView:codexMigration.sidebarView",
@@ -33,26 +38,26 @@
     "commands": [
       {
         "command": "codexMigration.open",
-        "title": "Codex 迁移: 打开面板"
+        "title": "Codex Migration: Open Panel"
       },
       {
         "command": "codexMigration.export",
-        "title": "Codex 迁移: 导出"
+        "title": "Codex Migration: Export"
       },
       {
         "command": "codexMigration.previewImport",
-        "title": "Codex 迁移: 预演导入"
+        "title": "Codex Migration: Preview Import"
       },
       {
         "command": "codexMigration.import",
-        "title": "Codex 迁移: 导入"
+        "title": "Codex Migration: Import"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
           "id": "codexMigration",
-          "title": "Codex迁移",
+          "title": "Codex Migration",
           "icon": "media/codex-migration.svg"
         }
       ]
@@ -61,7 +66,7 @@
       "codexMigration": [
         {
           "id": "codexMigration.sidebarView",
-          "name": "迁移助手",
+          "name": "Migration Assistant",
           "type": "webview"
         }
       ]
@@ -77,9 +82,11 @@
     "watch:ext": "tsc -w -p tsconfig.json",
     "watch:webview": "vite build --watch --config webview/vite.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p webview/tsconfig.json --noEmit",
-    "test:unit": "npm run build:ext && node --test test/process-guard.test.mjs"
+    "test:unit": "npm run build:ext && node --test test"
   },
   "dependencies": {
+    "@types/sql.js": "^1.4.9",
+    "sql.js": "^1.13.0",
     "yauzl": "^3.2.0",
     "yazl": "^3.3.1",
     "zod": "^3.24.2"

@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { post } from "./api/vscodeBridge";
-import type { RequestMessage, ResponseMessage } from "./api/types";
+import type {
+  RequestMessage,
+  ResponseMessage,
+  ThreadCleanupApplyMode,
+  ThreadCleanupPreviewResult,
+  ThreadCleanupResult,
+  ThreadCleanupScope
+} from "./api/types";
 import { ProgressPanel } from "./components/ProgressPanel";
 import { RiskConfirmDialog } from "./components/RiskConfirmDialog";
 import { SummaryCard } from "./components/SummaryCard";
@@ -27,6 +34,23 @@ function normalizeOutputDirValue(input: string): string {
     return trimmed;
   }
   return trimmed.slice(0, slashIndex);
+}
+
+function parseThreadIds(input: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of input.split(/[\s,]+/g).map((item) => item.trim())) {
+    if (!part || seen.has(part)) {
+      continue;
+    }
+    seen.add(part);
+    out.push(part);
+  }
+  return out;
+}
+
+function isThreadCleanupRequest(message?: RequestMessage): message is Extract<RequestMessage, { type: "START_THREAD_CLEANUP" }> {
+  return !!message && message.type === "START_THREAD_CLEANUP";
 }
 
 type LockDetails = {
@@ -57,7 +81,9 @@ export default function App(): JSX.Element {
           profilesRoot: msg.payload.profilesRoot,
           activeProfileId: msg.payload.activeProfileId,
           profiles: msg.payload.profiles,
-          outputDir: normalizeOutputDirValue(s.outputDir).trim().length > 0 ? normalizeOutputDirValue(s.outputDir) : msg.payload.defaultOutputDir
+          outputDir: normalizeOutputDirValue(s.outputDir).trim().length > 0 ? normalizeOutputDirValue(s.outputDir) : msg.payload.defaultOutputDir,
+          threadCleanupProfileId:
+            s.threadCleanupProfileId.trim().length > 0 ? s.threadCleanupProfileId : (msg.payload.activeProfileId ?? msg.payload.profiles[0]?.id ?? "")
         }));
         return;
       }
@@ -88,16 +114,42 @@ export default function App(): JSX.Element {
 
       if (msg.type === "TASK_RESULT") {
         if (msg.payload.action === "killProcesses") {
-          // 接续之前的挂起操作
+          // Continue the suspended request after killing blocking processes.
           if (lastRequestRef.current) {
             post(lastRequestRef.current);
           }
           return;
         }
+        if (msg.payload.action === "threadCleanupPreview") {
+          setState((s) => ({
+            ...s,
+            threadCleanupPreview: msg.payload.data as ThreadCleanupPreviewResult,
+            lastResult: msg.payload.data as ThreadCleanupPreviewResult
+          }));
+          return;
+        }
+        if (msg.payload.action === "threadCleanup") {
+          setState((s) => ({
+            ...s,
+            threadCleanupResult: msg.payload.data as ThreadCleanupResult,
+            lastResult: msg.payload.data as ThreadCleanupResult
+          }));
+          return;
+        }
+        setState((s) => ({ ...s, lastResult: msg.payload.data as UiState["lastResult"] }));
         return;
       }
 
       if (msg.type === "TASK_ERROR") {
+        const lastRequest = lastRequestRef.current;
+        if (msg.payload.code === "E_FILE_LOCKED" && isThreadCleanupRequest(lastRequest) && lastRequest.payload.applyMode === "restartLater") {
+          setState((s) => ({
+            ...s,
+            logs: [...s.logs, `[warn] ${msg.payload.message}`],
+            lastError: `${msg.payload.code}: ${msg.payload.message}`
+          }));
+          return;
+        }
         if (msg.payload.code === "E_FILE_LOCKED") {
           setPendingLockDetails({ busy: msg.payload.details?.busy as BusyProcess[] });
           return;
@@ -126,7 +178,13 @@ export default function App(): JSX.Element {
   }
 
   function onChange(field: string, value: string | boolean): void {
-    setState((s) => ({ ...s, [field]: value }));
+    setState((s) => {
+      const next: UiState = { ...s, [field]: value } as UiState;
+      if (field === "threadCleanupInput" || field === "threadCleanupScope" || field === "threadCleanupProfileId") {
+        next.threadCleanupPreview = undefined;
+      }
+      return next;
+    });
   }
 
   function pushLocalError(message: string): void {
@@ -161,6 +219,12 @@ export default function App(): JSX.Element {
                 activeProfileId={state.activeProfileId}
                 backupBeforeSwitch={state.backupBeforeSwitch}
                 newProfileName={state.newProfileName}
+                threadCleanupInput={state.threadCleanupInput}
+                threadCleanupScope={state.threadCleanupScope}
+                threadCleanupProfileId={state.threadCleanupProfileId}
+                threadCleanupBackupEnabled={state.threadCleanupBackupEnabled}
+                threadCleanupPreview={state.threadCleanupPreview}
+                threadCleanupResult={state.threadCleanupResult}
                 onChange={onChange}
                 onRefresh={() => dispatch({ type: "REFRESH_PROFILES", payload: { codexHome: state.codexHome } })}
                 onRefreshUsage={(profileId) => dispatch({ type: "REFRESH_PROFILE_USAGE", payload: { codexHome: state.codexHome, profileId } })}
@@ -214,6 +278,48 @@ export default function App(): JSX.Element {
                 }}
                 onDelete={(profileId) => {
                   dispatch({ type: "DELETE_PROFILE", payload: { codexHome: state.codexHome, profileId } });
+                }}
+                onPreviewThreadCleanup={() => {
+                  const threadIds = parseThreadIds(state.threadCleanupInput);
+                  if (threadIds.length === 0) {
+                    pushLocalError("请先输入至少一个会话ID。");
+                    return;
+                  }
+                  if (state.threadCleanupScope === "single" && state.threadCleanupProfileId.trim().length === 0) {
+                    pushLocalError("单账号清理需要先选择账号。");
+                    return;
+                  }
+                  dispatch({
+                    type: "PREVIEW_THREAD_CLEANUP",
+                    payload: {
+                      codexHome: state.codexHome,
+                      threadIds,
+                      scope: state.threadCleanupScope,
+                      profileId: state.threadCleanupScope === "single" ? state.threadCleanupProfileId.trim() : undefined
+                    }
+                  });
+                }}
+                onStartThreadCleanup={(applyMode: ThreadCleanupApplyMode) => {
+                  const threadIds = parseThreadIds(state.threadCleanupInput);
+                  if (threadIds.length === 0) {
+                    pushLocalError("请先输入至少一个会话ID。");
+                    return;
+                  }
+                  if (!state.threadCleanupPreview) {
+                    pushLocalError("请先执行“查找匹配”预览，再确认删除。");
+                    return;
+                  }
+                  dispatch({
+                    type: "START_THREAD_CLEANUP",
+                    payload: {
+                      codexHome: state.codexHome,
+                      threadIds,
+                      scope: state.threadCleanupScope,
+                      profileId: state.threadCleanupScope === "single" ? state.threadCleanupProfileId.trim() : undefined,
+                      backupEnabled: state.threadCleanupBackupEnabled,
+                      applyMode
+                    }
+                  });
                 }}
               />
             </div>

@@ -9,6 +9,7 @@ import { activateProfile, createProfile, deleteProfile, getProfilesSnapshot, ref
 import { writeReportBundle } from "../engine/report";
 import { previewImport } from "../engine/scanner";
 import { forceKillProcesses, relaunchKilledProcesses } from "../engine/processGuard";
+import { executeThreadCleanup, previewThreadCleanup } from "../engine/threadCleanup";
 import { asAppError, ErrorCode } from "../protocol/errors";
 import type { ExportResult, ExportScope, RequestMessage, ResponseMessage } from "../protocol/messages";
 import { requestSchema } from "../protocol/schema";
@@ -654,6 +655,59 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
         emitTaskLog(target.webview, "info", `已导入到新账号槽位 ${created.name}。如需使用，请在账号页切换到该槽位。`);
         const finalSnapshot = await getProfilesSnapshot(codexHome);
         await emitSnapshot(target.webview, finalSnapshot);
+        return;
+      }
+
+      if (msg.type === "PREVIEW_THREAD_CLEANUP") {
+        const codexHome = await resolveAndValidateCodexHome(msg.payload.codexHome);
+        emitTaskLog(target.webview, "info", `开始对话清理预览（范围=${msg.payload.scope}）`);
+        send(target.webview, { type: "TASK_PROGRESS", payload: { step: "thread-cleanup-preview", percent: 15, message: "扫描匹配线程" } });
+        const result = await previewThreadCleanup({
+          codexHome,
+          threadIds: msg.payload.threadIds,
+          scope: msg.payload.scope,
+          profileId: msg.payload.profileId
+        });
+        send(target.webview, { type: "TASK_PROGRESS", payload: { step: "thread-cleanup-preview", percent: 100, message: "清理预览完成" } });
+        send(target.webview, { type: "TASK_RESULT", payload: { action: "threadCleanupPreview", data: result } });
+        emitTaskLog(
+          target.webview,
+          "info",
+          `预览完成：命中线程 ${result.totalMatchedThreads}，命中文件 ${result.totalMatchedFiles}，未命中会话ID ${result.notFoundThreadIds.length}`
+        );
+        return;
+      }
+
+      if (msg.type === "START_THREAD_CLEANUP") {
+        const codexHome = await resolveAndValidateCodexHome(msg.payload.codexHome);
+        emitTaskLog(
+          target.webview,
+          "info",
+          `开始执行对话清理（范围=${msg.payload.scope}, 生效=${msg.payload.applyMode}, 备份=${msg.payload.backupEnabled ? "on" : "off"}）`
+        );
+        send(target.webview, { type: "TASK_PROGRESS", payload: { step: "thread-cleanup", percent: 10, message: "准备清理任务" } });
+        const result = await executeThreadCleanup({
+          codexHome,
+          threadIds: msg.payload.threadIds,
+          scope: msg.payload.scope,
+          profileId: msg.payload.profileId,
+          backupEnabled: msg.payload.backupEnabled,
+          applyMode: msg.payload.applyMode,
+          onLog: (message) => emitTaskLog(target.webview, "info", message)
+        });
+        send(target.webview, { type: "TASK_PROGRESS", payload: { step: "thread-cleanup", percent: 100, message: "对话清理执行完成" } });
+        send(target.webview, { type: "TASK_RESULT", payload: { action: "threadCleanup", data: result } });
+        if (result.backupPath) {
+          emitTaskLog(target.webview, "info", `清理备份目录: ${result.backupPath}`);
+        }
+        if (result.notFoundThreadIds.length > 0) {
+          emitTaskLog(target.webview, "warn", `以下会话ID未命中: ${result.notFoundThreadIds.join(", ")}`);
+        }
+        const lockedProfiles = result.profiles.filter((item) => item.locked);
+        if (lockedProfiles.length > 0) {
+          emitTaskLog(target.webview, "warn", `有 ${lockedProfiles.length} 个账号因进程占用未清理，请重启后再执行。`);
+        }
+        await emitStateSnapshot(target.webview, codexHome);
         return;
       }
 
