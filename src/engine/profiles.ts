@@ -65,9 +65,122 @@ type UsageCacheEntry = {
 };
 const usageCache = new Map<string, UsageCacheEntry>();
 const GLOBAL_STATE_FILE = ".codex-global-state.json";
+const CONFIG_FILE = "config.toml";
+
+type TomlSection = {
+  header?: string;
+  order: string[];
+  entries: Map<string, string>;
+};
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function createTomlSection(header?: string): TomlSection {
+  return {
+    header,
+    order: [],
+    entries: new Map<string, string>()
+  };
+}
+
+function parseTomlSections(content: string): Map<string, TomlSection> {
+  const sections = new Map<string, TomlSection>();
+  let currentSection = "";
+  sections.set(currentSection, createTomlSection());
+
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
+    const sectionMatch = line.match(/^\[([^\]]+)\]$/);
+    if (sectionMatch) {
+      currentSection = sectionMatch[1].trim();
+      if (!sections.has(currentSection)) {
+        sections.set(currentSection, createTomlSection(line));
+      }
+      continue;
+    }
+
+    const keyMatch = line.match(/^([A-Za-z0-9_.-]+)\s*=/);
+    if (!keyMatch) {
+      continue;
+    }
+    const key = keyMatch[1];
+    const section = sections.get(currentSection) ?? createTomlSection(currentSection ? `[${currentSection}]` : undefined);
+    if (!sections.has(currentSection)) {
+      sections.set(currentSection, section);
+    }
+    if (!section.entries.has(key)) {
+      section.order.push(key);
+    }
+    section.entries.set(key, rawLine);
+  }
+
+  return sections;
+}
+
+async function mergeConfigToml(sourceProfilePath: string, targetProfilePath: string, messages: string[]): Promise<void> {
+  const sourcePath = path.join(sourceProfilePath, CONFIG_FILE);
+  const targetPath = path.join(targetProfilePath, CONFIG_FILE);
+  const sourceStat = await statSafe(sourcePath);
+  if (!sourceStat?.isFile()) {
+    return;
+  }
+
+  const targetStat = await statSafe(targetPath);
+  if (!targetStat?.isFile()) {
+    await fs.copyFile(sourcePath, targetPath);
+    messages.push("已补齐目标账号缺失的 config.toml。");
+    return;
+  }
+
+  const sourceSections = parseTomlSections(await fs.readFile(sourcePath, "utf8"));
+  const targetSections = parseTomlSections(await fs.readFile(targetPath, "utf8"));
+  let addedCount = 0;
+
+  for (const [sectionName, sourceSection] of sourceSections.entries()) {
+    const targetSection = targetSections.get(sectionName) ?? createTomlSection(sourceSection.header);
+    if (!targetSections.has(sectionName)) {
+      targetSections.set(sectionName, targetSection);
+    }
+    if (!targetSection.header && sourceSection.header) {
+      targetSection.header = sourceSection.header;
+    }
+    for (const key of sourceSection.order) {
+      if (targetSection.entries.has(key)) {
+        continue;
+      }
+      const rawLine = sourceSection.entries.get(key);
+      if (!rawLine) {
+        continue;
+      }
+      targetSection.order.push(key);
+      targetSection.entries.set(key, rawLine);
+      addedCount += 1;
+    }
+  }
+
+  const outputLines: string[] = [];
+  for (const [sectionName, section] of targetSections.entries()) {
+    if (sectionName && section.header) {
+      if (outputLines.length > 0) {
+        outputLines.push("");
+      }
+      outputLines.push(section.header);
+    }
+    for (const key of section.order) {
+      const rawLine = section.entries.get(key);
+      if (rawLine) {
+        outputLines.push(rawLine);
+      }
+    }
+  }
+
+  await fs.writeFile(targetPath, `${outputLines.join("\n")}\n`, "utf8");
+  messages.push(`已合并 config.toml：新增 ${addedCount} 个配置项，已去重保留目标现有配置。`);
 }
 
 async function sha256File(filePath: string): Promise<string> {
@@ -924,6 +1037,8 @@ async function mergeCoreIntoTargetProfile(sourceProfilePath: string, targetProfi
       messages.push(`合并警告: ${warning}`);
     }
 
+    await mergeConfigToml(sourceProfilePath, targetProfilePath, messages);
+
     const sourceStateFiles = await listStateFiles(sourceProfilePath);
     const targetStateFiles = await listStateFiles(targetProfilePath);
     if (sourceStateFiles.length > 0 && targetStateFiles.length === 0) {
@@ -968,7 +1083,7 @@ async function overwriteCurrentIntoTargetProfile(sourceProfilePath: string, targ
         await fs.cp(sourceDir, path.join(outPath, dirName), { recursive: true });
       }
     }
-    for (const fileName of [...MERGE_FILE_NAMES, GLOBAL_STATE_FILE]) {
+    for (const fileName of [...MERGE_FILE_NAMES, GLOBAL_STATE_FILE, CONFIG_FILE]) {
       await copyFileIfExists(path.join(profilePath, fileName), path.join(outPath, fileName));
     }
     for (const stateFile of await listStateFiles(profilePath)) {
@@ -984,7 +1099,7 @@ async function overwriteCurrentIntoTargetProfile(sourceProfilePath: string, targ
         await fs.cp(backupDir, path.join(profilePath, dirName), { recursive: true });
       }
     }
-    for (const fileName of [...MERGE_FILE_NAMES, GLOBAL_STATE_FILE]) {
+    for (const fileName of [...MERGE_FILE_NAMES, GLOBAL_STATE_FILE, CONFIG_FILE]) {
       await fs.rm(path.join(profilePath, fileName), { force: true });
       await copyFileIfExists(path.join(outPath, fileName), path.join(profilePath, fileName));
     }
@@ -1000,7 +1115,7 @@ async function overwriteCurrentIntoTargetProfile(sourceProfilePath: string, targ
     for (const dirName of CORE_DIRS) {
       await fs.rm(path.join(profilePath, dirName), { recursive: true, force: true });
     }
-    for (const fileName of [...MERGE_FILE_NAMES, GLOBAL_STATE_FILE]) {
+    for (const fileName of [...MERGE_FILE_NAMES, GLOBAL_STATE_FILE, CONFIG_FILE]) {
       await fs.rm(path.join(profilePath, fileName), { force: true });
     }
     for (const stateFile of await listStateFiles(profilePath)) {
@@ -1016,7 +1131,7 @@ async function overwriteCurrentIntoTargetProfile(sourceProfilePath: string, targ
         await fs.cp(sourceDir, path.join(targetPath, dirName), { recursive: true });
       }
     }
-    for (const fileName of [...MERGE_FILE_NAMES, GLOBAL_STATE_FILE]) {
+    for (const fileName of [...MERGE_FILE_NAMES, GLOBAL_STATE_FILE, CONFIG_FILE]) {
       await copyFileIfExists(path.join(sourcePath, fileName), path.join(targetPath, fileName));
     }
     for (const stateFile of await listStateFiles(sourcePath)) {
@@ -1029,6 +1144,7 @@ async function overwriteCurrentIntoTargetProfile(sourceProfilePath: string, targ
     await clearTargetCore(targetProfilePath);
     await copySourceCore(sourceProfilePath, targetProfilePath);
     messages.push("已使用当前账号的记录覆盖目标账号（保留目标账号登录态）。");
+    messages.push("已使用当前账号的 config.toml 覆盖目标账号配置。");
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     try {
