@@ -53,6 +53,13 @@ function isThreadCleanupRequest(message?: RequestMessage): message is Extract<Re
   return !!message && message.type === "START_THREAD_CLEANUP";
 }
 
+function isRetryableAfterKill(message?: RequestMessage): boolean {
+  if (!message) {
+    return false;
+  }
+  return message.type === "ACTIVATE_PROFILE" || message.type === "DELETE_PROFILE" || message.type === "START_THREAD_CLEANUP";
+}
+
 type LockDetails = {
   busy?: BusyProcess[];
 };
@@ -62,10 +69,14 @@ export default function App(): JSX.Element {
   const [state, setState] = useState<UiState>(initialState);
   const pickTargetRef = useRef<"outputDir" | "backupZip">("outputDir");
   const lastRequestRef = useRef<RequestMessage | undefined>();
+  const retryAfterKillRef = useRef<RequestMessage | undefined>();
   const [pendingLockDetails, setPendingLockDetails] = useState<LockDetails | undefined>();
 
   function dispatch(message: RequestMessage): void {
     lastRequestRef.current = message;
+    if (isRetryableAfterKill(message)) {
+      retryAfterKillRef.current = message;
+    }
     post(message);
   }
 
@@ -115,8 +126,8 @@ export default function App(): JSX.Element {
       if (msg.type === "TASK_RESULT") {
         if (msg.payload.action === "killProcesses") {
           // Continue the suspended request after killing blocking processes.
-          if (lastRequestRef.current) {
-            post(lastRequestRef.current);
+          if (retryAfterKillRef.current) {
+            post(retryAfterKillRef.current);
           }
           return;
         }
@@ -154,6 +165,7 @@ export default function App(): JSX.Element {
           setPendingLockDetails({ busy: msg.payload.details?.busy as BusyProcess[] });
           return;
         }
+        retryAfterKillRef.current = undefined;
         setState((s) => ({ ...s, lastError: `${msg.payload.code}: ${msg.payload.message}` }));
       }
     };
