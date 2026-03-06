@@ -141,7 +141,7 @@ async function getSqlJs(): Promise<SqlJsStatic> {
   if (!sqlJsPromise) {
     const wasmPath = getSqlJsWasmPath();
     sqlJsPromise = initSqlJs({
-      locateFile: (file) => {
+      locateFile: (file: string) => {
         if (file.endsWith(".wasm")) {
           return wasmPath;
         }
