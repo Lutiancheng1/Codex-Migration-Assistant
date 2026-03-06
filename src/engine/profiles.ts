@@ -1,6 +1,7 @@
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
+import { createHash } from "crypto";
 import { copyFileIfExists, ensureDir, statSafe } from "./fileTree";
 import { runExport } from "./exporter";
 import { runImport } from "./importer";
@@ -67,6 +68,52 @@ const GLOBAL_STATE_FILE = ".codex-global-state.json";
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+async function sha256File(filePath: string): Promise<string> {
+  const buffer = await fs.readFile(filePath);
+  return createHash("sha256").update(buffer).digest("hex");
+}
+
+async function dedupeBackupArchives(preferredZipPath: string): Promise<{ keptPath: string; removedPaths: string[] }> {
+  const preferredStat = await statSafe(preferredZipPath);
+  if (!preferredStat?.isFile()) {
+    return { keptPath: preferredZipPath, removedPaths: [] };
+  }
+
+  const backupDir = path.dirname(preferredZipPath);
+  const entries = await fs.readdir(backupDir, { withFileTypes: true });
+  const candidates = entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".zip"))
+    .map((entry) => path.join(backupDir, entry.name));
+
+  const preferredHash = await sha256File(preferredZipPath);
+  const sameGroup: Array<{ filePath: string; mtimeMs: number }> = [];
+
+  for (const filePath of candidates) {
+    const st = await statSafe(filePath);
+    if (!st?.isFile() || st.size !== preferredStat.size) {
+      continue;
+    }
+    const hash = await sha256File(filePath);
+    if (hash === preferredHash) {
+      sameGroup.push({ filePath, mtimeMs: st.mtimeMs });
+    }
+  }
+
+  if (sameGroup.length <= 1) {
+    return { keptPath: preferredZipPath, removedPaths: [] };
+  }
+
+  sameGroup.sort((a, b) => b.mtimeMs - a.mtimeMs || a.filePath.localeCompare(b.filePath));
+  const keptPath = sameGroup[0].filePath;
+  const removedPaths: string[] = [];
+  for (const item of sameGroup.slice(1)) {
+    await fs.rm(item.filePath, { force: true });
+    removedPaths.push(item.filePath);
+  }
+
+  return { keptPath, removedPaths };
 }
 
 async function resolvePreferredProfileName(profilePath: string, fallback: string): Promise<string> {
@@ -1039,7 +1086,11 @@ export async function activateProfile(
       includeAuth: false,
       mode: "core"
     });
-    messages.push(`切换前已备份当前账号: ${result.zipPath}`);
+    const deduped = await dedupeBackupArchives(result.zipPath);
+    messages.push(`切换前已备份当前账号: ${deduped.keptPath}`);
+    if (deduped.removedPaths.length > 0) {
+      messages.push(`已自动清理 ${deduped.removedPaths.length} 个重复备份 ZIP。`);
+    }
   }
 
   if (switchMode === "merge" && active) {

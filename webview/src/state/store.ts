@@ -46,7 +46,7 @@ export const initialState: UiState = {
   profilesRoot: "",
   profiles: [],
   activeProfileId: undefined,
-  backupBeforeSwitch: true,
+  backupBeforeSwitch: false,
   newProfileName: "",
   outputDir: "",
   exportScope: "active",
