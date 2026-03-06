@@ -140,6 +140,7 @@ async function mergeConfigToml(sourceProfilePath: string, targetProfilePath: str
   const sourceSections = parseTomlSections(await fs.readFile(sourcePath, "utf8"));
   const targetSections = parseTomlSections(await fs.readFile(targetPath, "utf8"));
   let addedCount = 0;
+  let replacedCount = 0;
 
   for (const [sectionName, sourceSection] of sourceSections.entries()) {
     const targetSection = targetSections.get(sectionName) ?? createTomlSection(sourceSection.header);
@@ -150,16 +151,17 @@ async function mergeConfigToml(sourceProfilePath: string, targetProfilePath: str
       targetSection.header = sourceSection.header;
     }
     for (const key of sourceSection.order) {
-      if (targetSection.entries.has(key)) {
-        continue;
-      }
       const rawLine = sourceSection.entries.get(key);
       if (!rawLine) {
         continue;
       }
-      targetSection.order.push(key);
+      if (!targetSection.entries.has(key)) {
+        targetSection.order.push(key);
+        addedCount += 1;
+      } else {
+        replacedCount += 1;
+      }
       targetSection.entries.set(key, rawLine);
-      addedCount += 1;
     }
   }
 
@@ -180,7 +182,7 @@ async function mergeConfigToml(sourceProfilePath: string, targetProfilePath: str
   }
 
   await fs.writeFile(targetPath, `${outputLines.join("\n")}\n`, "utf8");
-  messages.push(`已合并 config.toml：新增 ${addedCount} 个配置项，已去重保留目标现有配置。`);
+  messages.push(`已合并 config.toml：新增 ${addedCount} 个配置项，覆盖 ${replacedCount} 个同名配置，未命中的目标配置已保留。`);
 }
 
 async function sha256File(filePath: string): Promise<string> {
