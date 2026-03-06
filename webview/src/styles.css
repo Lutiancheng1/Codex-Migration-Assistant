@@ -307,6 +307,11 @@ input[type="checkbox"] {
   z-index: 30;
 }
 
+.info-hint[data-side="right"] .info-hint-tip {
+  left: 22px;
+  right: auto;
+}
+
 .info-hint:hover .info-hint-tip,
 .info-hint:focus-within .info-hint-tip {
   opacity: 1;
