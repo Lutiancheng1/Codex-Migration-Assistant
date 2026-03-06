@@ -3,7 +3,7 @@ name: Package VSIX on Push
 on:
   push:
     branches:
-      - "**"
+      - main
   workflow_dispatch:
 
 jobs:
@@ -11,7 +11,7 @@ jobs:
     if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
 
     steps:
       - name: Checkout Repository
@@ -31,10 +31,36 @@ jobs:
           npm run build
           npx @vscode/vsce package
 
-      - name: Upload VSIX Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: vsix-${{ github.run_number }}
-          path: "*.vsix"
-          if-no-files-found: error
-          retention-days: 14
+      - name: Rename VSIX
+        run: |
+          ORIGINAL_VSIX=$(ls *.vsix | head -n 1)
+          VERSION=$(node -p 'require("./package.json").version')
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          TARGET_VSIX="codex-migration-assistant-v${VERSION}-${SHORT_SHA}.vsix"
+          mv "$ORIGINAL_VSIX" "$TARGET_VSIX"
+          echo "VSIX_FILE=$TARGET_VSIX" >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Ensure nightly release exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view nightly >/dev/null 2>&1 || \
+            gh release create nightly \
+              --title "Nightly VSIX" \
+              --notes "Latest auto-packaged Codex Migration Assistant build" \
+              --prerelease
+
+      - name: Remove previous VSIX assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view nightly --json assets --jq '.assets[] | select(.name | endswith(".vsix")) | .name' | \
+          while read -r asset; do
+            [ -n "$asset" ] && gh release delete-asset nightly "$asset" -y
+          done
+
+      - name: Upload nightly VSIX
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload nightly "$VSIX_FILE" --clobber
