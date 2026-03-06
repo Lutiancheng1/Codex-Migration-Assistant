@@ -103,5 +103,6 @@
     "react-dom": "^18.3.1",
     "typescript": "^5.8.2",
     "vite": "^5.4.14"
-  }
+  },
+  "icon": "media/codex-migration.png"
 }
