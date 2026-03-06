@@ -54,7 +54,8 @@ export const requestSchema = z.discriminatedUnion("type", [
       codexHome: z.string().optional(),
       profileId: z.string().min(1),
       backupCurrent: z.boolean(),
-      mergeFromCurrentCore: z.boolean().optional()
+      mergeFromCurrentCore: z.boolean().optional(),
+      switchMode: z.enum(["plain", "merge", "overwrite"]).optional()
     })
   }),
   z.object({

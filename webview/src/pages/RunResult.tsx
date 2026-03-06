@@ -40,7 +40,7 @@ export function RunResult(props: { data?: ResultData; error?: string }): JSX.Ele
             <>
               <p><strong>目标账号：</strong> {data.targetProfileId}</p>
               <p><strong>切换前备份：</strong> {data.backupCurrent ? "是" : "否"}</p>
-              <p><strong>切换并合并：</strong> {data.mergeFromCurrentCore ? "是" : "否"}</p>
+              <p><strong>切换模式：</strong> {data.switchMode === "overwrite" ? "切换并覆盖" : data.switchMode === "merge" ? "切换并合并" : "普通切换"}</p>
               <p><strong>恢复启动：</strong> {data.relaunchedClients.length > 0 ? data.relaunchedClients.join(", ") : "(无)"}</p>
               {data.messages.length > 0 ? <ul>{data.messages.map((m) => <li key={m}>{m}</li>)}</ul> : null}
             </>

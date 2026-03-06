@@ -9,6 +9,7 @@ import { detectExternalBusyProcesses, formatBusyProcessSummary } from "./process
 import { fetchProfileUsage, type ProfileUsageSummary } from "./usage";
 import { resolveProfileAuthLabel } from "./authLabel";
 import { ErrorCode } from "../protocol/errors";
+import type { ProfileSwitchMode } from "../protocol/messages";
 
 const MERGE_FILE_NAMES = ["history.jsonl", "session_index.jsonl"] as const;
 
@@ -901,11 +902,105 @@ async function mergeCoreIntoTargetProfile(sourceProfilePath: string, targetProfi
   }
 }
 
+async function overwriteCurrentIntoTargetProfile(sourceProfilePath: string, targetProfilePath: string, messages: string[]): Promise<void> {
+  const tempOutputRoot = await fs.mkdtemp(path.join(os.tmpdir(), "codex-profile-overwrite-"));
+  const snapshotRoot = path.join(tempOutputRoot, "target-before");
+
+  async function listStateFiles(profilePath: string): Promise<string[]> {
+    const entries = await fs.readdir(profilePath, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isFile() && isStateFilename(entry.name))
+      .map((entry) => path.join(profilePath, entry.name));
+  }
+
+  async function snapshotTarget(profilePath: string, outPath: string): Promise<void> {
+    await ensureDir(outPath);
+    for (const dirName of CORE_DIRS) {
+      const sourceDir = path.join(profilePath, dirName);
+      if ((await statSafe(sourceDir))?.isDirectory()) {
+        await fs.cp(sourceDir, path.join(outPath, dirName), { recursive: true });
+      }
+    }
+    for (const fileName of [...MERGE_FILE_NAMES, GLOBAL_STATE_FILE]) {
+      await copyFileIfExists(path.join(profilePath, fileName), path.join(outPath, fileName));
+    }
+    for (const stateFile of await listStateFiles(profilePath)) {
+      await fs.copyFile(stateFile, path.join(outPath, path.basename(stateFile)));
+    }
+  }
+
+  async function restoreTarget(profilePath: string, outPath: string): Promise<void> {
+    for (const dirName of CORE_DIRS) {
+      await fs.rm(path.join(profilePath, dirName), { recursive: true, force: true });
+      const backupDir = path.join(outPath, dirName);
+      if ((await statSafe(backupDir))?.isDirectory()) {
+        await fs.cp(backupDir, path.join(profilePath, dirName), { recursive: true });
+      }
+    }
+    for (const fileName of [...MERGE_FILE_NAMES, GLOBAL_STATE_FILE]) {
+      await fs.rm(path.join(profilePath, fileName), { force: true });
+      await copyFileIfExists(path.join(outPath, fileName), path.join(profilePath, fileName));
+    }
+    for (const stateFile of await listStateFiles(profilePath)) {
+      await fs.rm(stateFile, { force: true });
+    }
+    for (const backupState of await listStateFiles(outPath)) {
+      await fs.copyFile(backupState, path.join(profilePath, path.basename(backupState)));
+    }
+  }
+
+  async function clearTargetCore(profilePath: string): Promise<void> {
+    for (const dirName of CORE_DIRS) {
+      await fs.rm(path.join(profilePath, dirName), { recursive: true, force: true });
+    }
+    for (const fileName of [...MERGE_FILE_NAMES, GLOBAL_STATE_FILE]) {
+      await fs.rm(path.join(profilePath, fileName), { force: true });
+    }
+    for (const stateFile of await listStateFiles(profilePath)) {
+      await fs.rm(stateFile, { force: true });
+    }
+  }
+
+  async function copySourceCore(sourcePath: string, targetPath: string): Promise<void> {
+    await ensureDir(targetPath);
+    for (const dirName of CORE_DIRS) {
+      const sourceDir = path.join(sourcePath, dirName);
+      if ((await statSafe(sourceDir))?.isDirectory()) {
+        await fs.cp(sourceDir, path.join(targetPath, dirName), { recursive: true });
+      }
+    }
+    for (const fileName of [...MERGE_FILE_NAMES, GLOBAL_STATE_FILE]) {
+      await copyFileIfExists(path.join(sourcePath, fileName), path.join(targetPath, fileName));
+    }
+    for (const stateFile of await listStateFiles(sourcePath)) {
+      await fs.copyFile(stateFile, path.join(targetPath, path.basename(stateFile)));
+    }
+  }
+
+  try {
+    await snapshotTarget(targetProfilePath, snapshotRoot);
+    await clearTargetCore(targetProfilePath);
+    await copySourceCore(sourceProfilePath, targetProfilePath);
+    messages.push("已使用当前账号的记录覆盖目标账号（保留目标账号登录态）。");
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    try {
+      await restoreTarget(targetProfilePath, snapshotRoot);
+    } catch (rollbackError) {
+      const rollbackReason = rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
+      throw new Error(`切换并覆盖失败，且回滚失败。原因: ${reason}; 回滚错误: ${rollbackReason}`);
+    }
+    throw new Error(`切换并覆盖失败，已回滚目标账号数据。原因: ${reason}`);
+  } finally {
+    await fs.rm(tempOutputRoot, { recursive: true, force: true });
+  }
+}
+
 export async function activateProfile(
   codexHome: string,
   profileId: string,
   backupCurrent: boolean,
-  mergeFromCurrentCore = false
+  switchMode: ProfileSwitchMode = "plain"
 ): Promise<ProfilesSnapshot> {
   const loaded = await loadBootstrappedMetadata(codexHome);
   const { paths, metadata, messages } = loaded;
@@ -947,8 +1042,11 @@ export async function activateProfile(
     messages.push(`切换前已备份当前账号: ${result.zipPath}`);
   }
 
-  if (mergeFromCurrentCore && active) {
+  if (switchMode === "merge" && active) {
     await mergeCoreIntoTargetProfile(active.path, target.path, messages);
+  }
+  if (switchMode === "overwrite" && active) {
+    await overwriteCurrentIntoTargetProfile(active.path, target.path, messages);
   }
 
   const previousActiveId = metadata.activeProfileId;

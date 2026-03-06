@@ -2,6 +2,7 @@ export type MigrationMode = "core" | "enhanced";
 export type ExportScope = "active" | "all" | "single";
 export type ThreadCleanupScope = "active" | "all" | "single";
 export type ThreadCleanupApplyMode = "killNow" | "restartLater";
+export type ProfileSwitchMode = "plain" | "merge" | "overwrite";
 
 export type ProfileUsageWindow = {
   usedPercent: number;
@@ -46,7 +47,13 @@ export type RequestMessage =
   | { type: "CREATE_PROFILE"; payload: { codexHome?: string; name: string } }
   | {
     type: "ACTIVATE_PROFILE";
-    payload: { codexHome?: string; profileId: string; backupCurrent: boolean; mergeFromCurrentCore?: boolean };
+    payload: {
+      codexHome?: string;
+      profileId: string;
+      backupCurrent: boolean;
+      mergeFromCurrentCore?: boolean;
+      switchMode?: ProfileSwitchMode;
+    };
   }
   | { type: "DELETE_PROFILE"; payload: { codexHome?: string; profileId: string } }
   | {
@@ -179,6 +186,7 @@ export type SwitchProfileResult = {
   targetProfileId: string;
   backupCurrent: boolean;
   mergeFromCurrentCore: boolean;
+  switchMode: ProfileSwitchMode;
   relaunchedClients: string[];
   messages: string[];
 };

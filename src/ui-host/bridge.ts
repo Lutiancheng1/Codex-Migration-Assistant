@@ -375,6 +375,8 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
 
       if (msg.type === "ACTIVATE_PROFILE") {
         const codexHome = resolveCodexHome(msg.payload.codexHome);
+        const switchMode =
+          msg.payload.switchMode ?? (msg.payload.mergeFromCurrentCore ? "merge" : "plain");
         send(target.webview, {
           type: "TASK_PROGRESS",
           payload: { step: "switch-profile", percent: 10, message: "准备切换账号" }
@@ -383,7 +385,7 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
           codexHome,
           msg.payload.profileId,
           msg.payload.backupCurrent,
-          msg.payload.mergeFromCurrentCore ?? false
+          switchMode
         );
         send(target.webview, {
           type: "TASK_PROGRESS",
@@ -417,7 +419,8 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
               codexHome,
               targetProfileId: msg.payload.profileId,
               backupCurrent: msg.payload.backupCurrent,
-              mergeFromCurrentCore: msg.payload.mergeFromCurrentCore ?? false,
+              mergeFromCurrentCore: switchMode === "merge",
+              switchMode,
               relaunchedClients,
               messages: snapshot.messages
             }

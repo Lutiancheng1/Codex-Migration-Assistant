@@ -261,7 +261,7 @@ export default function App(): JSX.Element {
                       codexHome: state.codexHome,
                       profileId,
                       backupCurrent: state.backupBeforeSwitch,
-                      mergeFromCurrentCore: false
+                      switchMode: "plain"
                     }
                   })
                 }
@@ -272,7 +272,18 @@ export default function App(): JSX.Element {
                       codexHome: state.codexHome,
                       profileId,
                       backupCurrent: state.backupBeforeSwitch,
-                      mergeFromCurrentCore: true
+                      switchMode: "merge"
+                    }
+                  });
+                }}
+                onActivateAndOverwrite={(profileId) => {
+                  dispatch({
+                    type: "ACTIVATE_PROFILE",
+                    payload: {
+                      codexHome: state.codexHome,
+                      profileId,
+                      backupCurrent: state.backupBeforeSwitch,
+                      switchMode: "overwrite"
                     }
                   });
                 }}

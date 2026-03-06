@@ -29,6 +29,7 @@ type Props = {
   onCreate(): void;
   onActivate(profileId: string): void;
   onActivateAndMerge(profileId: string): void;
+  onActivateAndOverwrite(profileId: string): void;
   onDelete(profileId: string): void;
   onPreviewThreadCleanup(): void;
   onStartThreadCleanup(applyMode: ThreadCleanupApplyMode): void;
@@ -73,6 +74,7 @@ export function AccountsManager(props: Props): JSX.Element {
   const canCreate = props.newProfileName.trim().length > 0;
   const [pendingDeleteProfileId, setPendingDeleteProfileId] = useState<string>();
   const [pendingMergeProfileId, setPendingMergeProfileId] = useState<string>();
+  const [pendingOverwriteProfileId, setPendingOverwriteProfileId] = useState<string>();
   const [openActionProfileId, setOpenActionProfileId] = useState<string>();
   const [actionAnchorRect, setActionAnchorRect] = useState<DOMRect | undefined>();
   const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(5 * 60 * 1000);
@@ -129,6 +131,7 @@ export function AccountsManager(props: Props): JSX.Element {
       setOpenActionProfileId(undefined);
       setPendingDeleteProfileId(undefined);
       setPendingMergeProfileId(undefined);
+      setPendingOverwriteProfileId(undefined);
       setActionAnchorRect(undefined);
     };
 
@@ -252,6 +255,7 @@ export function AccountsManager(props: Props): JSX.Element {
               const isActive = profile.id === props.activeProfileId;
               const confirmDelete = pendingDeleteProfileId === profile.id;
               const confirmMerge = pendingMergeProfileId === profile.id;
+              const confirmOverwrite = pendingOverwriteProfileId === profile.id;
               const isActionOpen = openActionProfileId === profile.id;
               return (
                 <tr key={profile.id}>
@@ -271,6 +275,7 @@ export function AccountsManager(props: Props): JSX.Element {
                         onClick={(e) => {
                           setPendingDeleteProfileId(undefined);
                           setPendingMergeProfileId(undefined);
+                          setPendingOverwriteProfileId(undefined);
                           if (openActionProfileId === profile.id) {
                             setOpenActionProfileId(undefined);
                             setActionAnchorRect(undefined);
@@ -329,6 +334,7 @@ export function AccountsManager(props: Props): JSX.Element {
                               <button
                                 onClick={() => {
                                   setPendingDeleteProfileId(undefined);
+                                  setPendingOverwriteProfileId(undefined);
                                   setPendingMergeProfileId(profile.id);
                                 }}
                                 disabled={isActive || !profile.exists}
@@ -349,6 +355,32 @@ export function AccountsManager(props: Props): JSX.Element {
                                     确认合并
                                   </button>
                                   <button onClick={() => setPendingMergeProfileId(undefined)}>取消</button>
+                                </div>
+                              ) : null}
+                              <button
+                                onClick={() => {
+                                  setPendingDeleteProfileId(undefined);
+                                  setPendingMergeProfileId(undefined);
+                                  setPendingOverwriteProfileId(profile.id);
+                                }}
+                                disabled={isActive || !profile.exists}
+                              >
+                                切换并覆盖
+                              </button>
+                              {confirmOverwrite ? (
+                                <div className="action-delete-confirm">
+                                  <button
+                                    className="danger"
+                                    onClick={() => {
+                                      setPendingOverwriteProfileId(undefined);
+                                      setOpenActionProfileId(undefined);
+                                      props.onActivateAndOverwrite(profile.id);
+                                    }}
+                                    disabled={isActive || !profile.exists}
+                                  >
+                                    确认覆盖
+                                  </button>
+                                  <button onClick={() => setPendingOverwriteProfileId(undefined)}>取消</button>
                                 </div>
                               ) : null}
                               {!confirmDelete ? (
@@ -631,4 +663,3 @@ export function AccountsManager(props: Props): JSX.Element {
     </section>
   );
 }
-
