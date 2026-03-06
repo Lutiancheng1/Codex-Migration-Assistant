@@ -271,6 +271,7 @@ function resolveExportTargets(
 type WebviewTarget = { webview: vscode.Webview };
 let emittedUninitializedHint = false;
 let pendingRelaunchCommands: string[] = [];
+let pendingActivateAfterKill: Extract<RequestMessage, { type: "ACTIVATE_PROFILE" }> | undefined;
 
 function resolveCreatedProfile(
   before: ProfilesSnapshot,
@@ -330,6 +331,62 @@ async function emitStateSnapshot(webview: vscode.Webview, codexHomeOverride?: st
   await emitSnapshot(webview, snapshot);
 }
 
+async function runActivateProfileRequest(target: WebviewTarget, msg: Extract<RequestMessage, { type: "ACTIVATE_PROFILE" }>): Promise<void> {
+  const codexHome = resolveCodexHome(msg.payload.codexHome);
+  const switchMode =
+    msg.payload.switchMode ?? (msg.payload.mergeFromCurrentCore ? "merge" : "plain");
+  send(target.webview, {
+    type: "TASK_PROGRESS",
+    payload: { step: "switch-profile", percent: 10, message: "准备切换账号" }
+  });
+  const snapshot = await activateProfile(
+    codexHome,
+    msg.payload.profileId,
+    msg.payload.backupCurrent,
+    switchMode
+  );
+  send(target.webview, {
+    type: "TASK_PROGRESS",
+    payload: { step: "switch-profile", percent: 80, message: "账号切换完成，正在刷新状态" }
+  });
+  await emitSnapshot(target.webview, snapshot);
+  let relaunchedClients: string[] = [];
+  if (pendingRelaunchCommands.length > 0) {
+    const result = await relaunchKilledProcesses(pendingRelaunchCommands);
+    relaunchedClients = result.succeeded;
+    if (result.attempted.length > 0) {
+      emitTaskLog(target.webview, "info", `已尝试恢复启动客户端: ${result.attempted.join(", ")}`);
+    }
+    if (result.succeeded.length > 0) {
+      emitTaskLog(target.webview, "info", `恢复启动成功: ${result.succeeded.join(", ")}`);
+    }
+    if (result.failed.length > 0) {
+      emitTaskLog(target.webview, "warn", `恢复启动失败: ${result.failed.join(", ")}（可手动打开）`);
+    }
+    pendingRelaunchCommands = [];
+  }
+  send(target.webview, {
+    type: "TASK_PROGRESS",
+    payload: { step: "switch-profile", percent: 100, message: "切换完成" }
+  });
+  send(target.webview, {
+    type: "TASK_RESULT",
+    payload: {
+      action: "switchProfile",
+      data: {
+        codexHome,
+        targetProfileId: msg.payload.profileId,
+        backupCurrent: msg.payload.backupCurrent,
+        mergeFromCurrentCore: switchMode === "merge",
+        switchMode,
+        relaunchedClients,
+        messages: snapshot.messages
+      }
+    }
+  });
+  emitTaskLog(target.webview, "warn", "账号已切换。请重启 Codex App 或执行 Reload Window 以加载新账号会话。");
+}
+
 export function bindBridge(target: WebviewTarget): vscode.Disposable {
   return target.webview.onDidReceiveMessage(async (raw: unknown) => {
     const logger = getLogger();
@@ -374,59 +431,8 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
       }
 
       if (msg.type === "ACTIVATE_PROFILE") {
-        const codexHome = resolveCodexHome(msg.payload.codexHome);
-        const switchMode =
-          msg.payload.switchMode ?? (msg.payload.mergeFromCurrentCore ? "merge" : "plain");
-        send(target.webview, {
-          type: "TASK_PROGRESS",
-          payload: { step: "switch-profile", percent: 10, message: "准备切换账号" }
-        });
-        const snapshot = await activateProfile(
-          codexHome,
-          msg.payload.profileId,
-          msg.payload.backupCurrent,
-          switchMode
-        );
-        send(target.webview, {
-          type: "TASK_PROGRESS",
-          payload: { step: "switch-profile", percent: 80, message: "账号切换完成，正在刷新状态" }
-        });
-        await emitSnapshot(target.webview, snapshot);
-        let relaunchedClients: string[] = [];
-        if (pendingRelaunchCommands.length > 0) {
-          const result = await relaunchKilledProcesses(pendingRelaunchCommands);
-          relaunchedClients = result.succeeded;
-          if (result.attempted.length > 0) {
-            emitTaskLog(target.webview, "info", `已尝试恢复启动客户端: ${result.attempted.join(", ")}`);
-          }
-          if (result.succeeded.length > 0) {
-            emitTaskLog(target.webview, "info", `恢复启动成功: ${result.succeeded.join(", ")}`);
-          }
-          if (result.failed.length > 0) {
-            emitTaskLog(target.webview, "warn", `恢复启动失败: ${result.failed.join(", ")}（可手动打开）`);
-          }
-          pendingRelaunchCommands = [];
-        }
-        send(target.webview, {
-          type: "TASK_PROGRESS",
-          payload: { step: "switch-profile", percent: 100, message: "切换完成" }
-        });
-        send(target.webview, {
-          type: "TASK_RESULT",
-          payload: {
-            action: "switchProfile",
-            data: {
-              codexHome,
-              targetProfileId: msg.payload.profileId,
-              backupCurrent: msg.payload.backupCurrent,
-              mergeFromCurrentCore: switchMode === "merge",
-              switchMode,
-              relaunchedClients,
-              messages: snapshot.messages
-            }
-          }
-        });
-        emitTaskLog(target.webview, "warn", "账号已切换。请重启 Codex App 或执行 Reload Window 以加载新账号会话。");
+        pendingActivateAfterKill = undefined;
+        await runActivateProfileRequest(target, msg);
         return;
       }
 
@@ -720,10 +726,20 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
         pendingRelaunchCommands = msg.payload.commands?.filter((item) => item.trim().length > 0) ?? [];
         emitTaskLog(target.webview, "info", `成功结束占用进程数: ${result.killedCount}`);
         send(target.webview, { type: "TASK_RESULT", payload: { action: "killProcesses", data: result } });
+        if (pendingActivateAfterKill) {
+          const resumeMsg = pendingActivateAfterKill;
+          pendingActivateAfterKill = undefined;
+          const resumeMode = resumeMsg.payload.switchMode ?? (resumeMsg.payload.mergeFromCurrentCore ? "merge" : "plain");
+          emitTaskLog(target.webview, "info", `继续执行挂起的账号切换（模式=${resumeMode}）...`);
+          await runActivateProfileRequest(target, resumeMsg);
+        }
         return;
       }
     } catch (err) {
       const appError = asAppError(err, ErrorCode.Unknown);
+      if (appError.code === ErrorCode.FileLocked && msg.type === "ACTIVATE_PROFILE") {
+        pendingActivateAfterKill = msg;
+      }
       logger.appendLine(`[error] ${appError.code}: ${appError.message}`);
       emitTaskLog(target.webview, "error", `${appError.code}: ${appError.message}`);
       send(target.webview, { type: "TASK_ERROR", payload: appError });

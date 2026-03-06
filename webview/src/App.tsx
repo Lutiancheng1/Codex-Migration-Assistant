@@ -125,10 +125,6 @@ export default function App(): JSX.Element {
 
       if (msg.type === "TASK_RESULT") {
         if (msg.payload.action === "killProcesses") {
-          // Continue the suspended request after killing blocking processes.
-          if (retryAfterKillRef.current) {
-            post(retryAfterKillRef.current);
-          }
           return;
         }
         if (msg.payload.action === "threadCleanupPreview") {
