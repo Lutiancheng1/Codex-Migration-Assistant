@@ -1,7 +1,7 @@
 {
   "name": "codex-migration-assistant",
-  "displayName": "Codex Migration Assistant",
-  "description": "Codex-only migration assistant for profile management, import/export, and session cleanup by Session ID.",
+  "displayName": "Codex 迁移助手",
+  "description": "面向 Codex 的账号切换、数据迁移、备份恢复与会话清理扩展。",
   "version": "0.1.1",
   "publisher": "local",
   "license": "MIT",
@@ -23,8 +23,8 @@
     "backup",
     "import",
     "export",
-    "session-cleanup",
-    "conversation-cleanup"
+    "profile-switch",
+    "session-cleanup"
   ],
   "activationEvents": [
     "onView:codexMigration.sidebarView",
@@ -38,26 +38,26 @@
     "commands": [
       {
         "command": "codexMigration.open",
-        "title": "Codex Migration: Open Panel"
+        "title": "Codex 迁移助手：打开面板"
       },
       {
         "command": "codexMigration.export",
-        "title": "Codex Migration: Export"
+        "title": "Codex 迁移助手：导出"
       },
       {
         "command": "codexMigration.previewImport",
-        "title": "Codex Migration: Preview Import"
+        "title": "Codex 迁移助手：预演导入"
       },
       {
         "command": "codexMigration.import",
-        "title": "Codex Migration: Import"
+        "title": "Codex 迁移助手：执行导入"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
           "id": "codexMigration",
-          "title": "Codex Migration",
+          "title": "Codex迁移",
           "icon": "media/codex-migration.svg"
         }
       ]
@@ -66,7 +66,7 @@
       "codexMigration": [
         {
           "id": "codexMigration.sidebarView",
-          "name": "Migration Assistant",
+          "name": "迁移助手",
           "type": "webview"
         }
       ]
