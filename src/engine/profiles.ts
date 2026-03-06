@@ -10,7 +10,7 @@ import { fetchProfileUsage, type ProfileUsageSummary } from "./usage";
 import { resolveProfileAuthLabel } from "./authLabel";
 import { ErrorCode } from "../protocol/errors";
 
-const MERGE_FILE_NAMES = ["history.jsonl"] as const;
+const MERGE_FILE_NAMES = ["history.jsonl", "session_index.jsonl"] as const;
 
 type StoredProfile = {
   id: string;

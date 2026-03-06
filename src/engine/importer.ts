@@ -43,7 +43,15 @@ export async function runImport(params: {
     const sessionsResult = await mergeDirectoryDetailed(sessionsSource, path.join(codexHome, "sessions"), stamp);
     const rulesResult = await mergeDirectoryDetailed(rulesSource, path.join(codexHome, "rules"), stamp);
     const skillsResult = await mergeDirectoryDetailed(skillsSource, path.join(codexHome, "skills"), stamp);
-    const history = await mergeHistoryJsonl(path.join(layout.coreRoot, "history.jsonl"), path.join(codexHome, "history.jsonl"));
+    const historyBase = await mergeHistoryJsonl(path.join(layout.coreRoot, "history.jsonl"), path.join(codexHome, "history.jsonl"));
+    const sessionIndex = await mergeHistoryJsonl(
+      path.join(layout.coreRoot, "session_index.jsonl"),
+      path.join(codexHome, "session_index.jsonl")
+    );
+    const history = {
+      appended: historyBase.appended + sessionIndex.appended,
+      same: historyBase.same + sessionIndex.same
+    };
     const editorConflictSamples: string[] = [];
     const editorLockedSamples: string[] = [];
 

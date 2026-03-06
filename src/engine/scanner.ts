@@ -35,7 +35,15 @@ export async function previewImport(params: {
     const sessionsResult = await scanDirectoryDiffDetailed(sessionsSource, path.join(codexHome, "sessions"));
     const rulesResult = await scanDirectoryDiffDetailed(rulesSource, path.join(codexHome, "rules"));
     const skillsResult = await scanDirectoryDiffDetailed(skillsSource, path.join(codexHome, "skills"));
-    const history = await previewHistoryMerge(path.join(layout.coreRoot, "history.jsonl"), path.join(codexHome, "history.jsonl"));
+    const historyBase = await previewHistoryMerge(path.join(layout.coreRoot, "history.jsonl"), path.join(codexHome, "history.jsonl"));
+    const sessionIndex = await previewHistoryMerge(
+      path.join(layout.coreRoot, "session_index.jsonl"),
+      path.join(codexHome, "session_index.jsonl")
+    );
+    const history = {
+      appended: historyBase.appended + sessionIndex.appended,
+      same: historyBase.same + sessionIndex.same
+    };
     const editorConflictSamples: string[] = [];
     const editorLockedSamples: string[] = [];
 
