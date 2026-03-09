@@ -92,6 +92,7 @@ export default function App(): JSX.Element {
           profilesRoot: msg.payload.profilesRoot,
           activeProfileId: msg.payload.activeProfileId,
           profiles: msg.payload.profiles,
+          tokenPool: msg.payload.tokenPool,
           outputDir: normalizeOutputDirValue(s.outputDir).trim().length > 0 ? normalizeOutputDirValue(s.outputDir) : msg.payload.defaultOutputDir,
           threadCleanupProfileId:
             s.threadCleanupProfileId.trim().length > 0 ? s.threadCleanupProfileId : (msg.payload.activeProfileId ?? msg.payload.profiles[0]?.id ?? "")
@@ -203,7 +204,7 @@ export default function App(): JSX.Element {
     <main>
       <header>
         <h1>Codex 迁移助手</h1>
-        <p>VS Code 扩展 · TypeScript 迁移引擎</p>
+        <p>跨设备同步记录用导出 / 导入，当前设备无感换号用账号槽位与账号池</p>
       </header>
 
       <Home platform={state.platform} codexHome={state.codexHome} />
@@ -225,6 +226,8 @@ export default function App(): JSX.Element {
                 profilesRoot={state.profilesRoot}
                 profiles={state.profiles}
                 activeProfileId={state.activeProfileId}
+                codexHome={state.codexHome}
+                tokenPool={state.tokenPool}
                 backupBeforeSwitch={state.backupBeforeSwitch}
                 newProfileName={state.newProfileName}
                 threadCleanupInput={state.threadCleanupInput}
@@ -236,6 +239,26 @@ export default function App(): JSX.Element {
                 onChange={onChange}
                 onRefresh={() => dispatch({ type: "REFRESH_PROFILES", payload: { codexHome: state.codexHome } })}
                 onRefreshUsage={(profileId) => dispatch({ type: "REFRESH_PROFILE_USAGE", payload: { codexHome: state.codexHome, profileId } })}
+                onImportTokenPoolSingle={() => dispatch({ type: "IMPORT_TOKEN_POOL_FILES", payload: { mode: "single" } })}
+                onImportTokenPoolMultiple={() => dispatch({ type: "IMPORT_TOKEN_POOL_FILES", payload: { mode: "multiple" } })}
+                onImportTokenPoolDirectory={() => dispatch({ type: "IMPORT_TOKEN_POOL_DIRECTORY" })}
+                onSyncCurrentToPoolRunner={() => dispatch({ type: "SYNC_CURRENT_TO_POOL_RUNNER", payload: { codexHome: state.codexHome } })}
+                onSwitchToPoolRunner={() =>
+                  dispatch({
+                    type: "SWITCH_TO_POOL_RUNNER",
+                    payload: { codexHome: state.codexHome, backupCurrent: state.backupBeforeSwitch }
+                  })}
+                onRefreshTokenPoolEntry={(entryId) =>
+                  dispatch({ type: "REFRESH_TOKEN_POOL_ENTRY_USAGE", payload: { codexHome: state.codexHome, entryId } })
+                }
+                onActivateTokenPoolEntry={(entryId) =>
+                  dispatch({ type: "ACTIVATE_TOKEN_POOL_ENTRY", payload: { codexHome: state.codexHome, entryId } })
+                }
+                onDeleteTokenPoolEntry={(entryId) => dispatch({ type: "DELETE_TOKEN_POOL_ENTRY", payload: { entryId } })}
+                onMoveTokenPoolEntry={(entryId, direction) =>
+                  dispatch({ type: "MOVE_TOKEN_POOL_ENTRY", payload: { entryId, direction } })
+                }
+                onUpdateTokenPoolSettings={(payload) => dispatch({ type: "SET_TOKEN_POOL_SETTINGS", payload })}
                 onExportProfile={(profileId) => {
                   if (state.outputDir.trim().length === 0) {
                     pushLocalError("请先在导出面板设置导出目录。");

@@ -39,6 +39,38 @@ export type ProfileSummary = {
   usageError?: string;
 };
 
+export type TokenPoolStatus = "neverChecked" | "available" | "exhausted" | "authInvalid" | "incomplete";
+
+export type TokenPoolSettings = {
+  autoSwitchEnabled: boolean;
+  pollIntervalMs: number;
+  autoRelaunchAfterSwitch: boolean;
+};
+
+export type TokenPoolEntry = {
+  id: string;
+  email?: string;
+  accountId: string;
+  type?: string;
+  expired?: string;
+  lastRefresh?: string;
+  importedAt: string;
+  updatedAt: string;
+  planTypeHint?: string;
+  usage?: ProfileUsageSummary;
+  usageError?: string;
+  status: TokenPoolStatus;
+  current: boolean;
+};
+
+export type TokenPoolSnapshot = {
+  activeEntryId?: string;
+  settings: TokenPoolSettings;
+  lastAutoSwitchAt?: string;
+  lastAutoSwitchMessage?: string;
+  entries: TokenPoolEntry[];
+};
+
 export type InitRequest = { type: "INIT" };
 export type RefreshProfilesRequest = { type: "REFRESH_PROFILES"; payload?: { codexHome?: string } };
 export type RefreshProfileUsageRequest = { type: "REFRESH_PROFILE_USAGE"; payload?: { codexHome?: string; profileId?: string } };
@@ -57,6 +89,36 @@ export type ActivateProfileRequest = {
   };
 };
 export type DeleteProfileRequest = { type: "DELETE_PROFILE"; payload: { codexHome?: string; profileId: string } };
+export type ImportTokenPoolFilesRequest = { type: "IMPORT_TOKEN_POOL_FILES"; payload: { mode: "single" | "multiple" } };
+export type ImportTokenPoolDirectoryRequest = { type: "IMPORT_TOKEN_POOL_DIRECTORY" };
+export type SyncCurrentToPoolRunnerRequest = {
+  type: "SYNC_CURRENT_TO_POOL_RUNNER";
+  payload?: { codexHome?: string };
+};
+export type SwitchToPoolRunnerRequest = {
+  type: "SWITCH_TO_POOL_RUNNER";
+  payload?: { codexHome?: string; backupCurrent?: boolean };
+};
+export type RefreshTokenPoolEntryUsageRequest = {
+  type: "REFRESH_TOKEN_POOL_ENTRY_USAGE";
+  payload: { codexHome?: string; entryId: string };
+};
+export type ActivateTokenPoolEntryRequest = {
+  type: "ACTIVATE_TOKEN_POOL_ENTRY";
+  payload: { codexHome?: string; entryId: string };
+};
+export type DeleteTokenPoolEntryRequest = {
+  type: "DELETE_TOKEN_POOL_ENTRY";
+  payload: { entryId: string };
+};
+export type MoveTokenPoolEntryRequest = {
+  type: "MOVE_TOKEN_POOL_ENTRY";
+  payload: { entryId: string; direction: "up" | "down" };
+};
+export type SetTokenPoolSettingsRequest = {
+  type: "SET_TOKEN_POOL_SETTINGS";
+  payload: { autoSwitchEnabled?: boolean; pollIntervalMs?: number; autoRelaunchAfterSwitch?: boolean };
+};
 export type StartExportRequest = {
   type: "START_EXPORT";
   payload: {
@@ -141,6 +203,15 @@ export type RequestMessage =
   | CreateProfileRequest
   | ActivateProfileRequest
   | DeleteProfileRequest
+  | ImportTokenPoolFilesRequest
+  | ImportTokenPoolDirectoryRequest
+  | SyncCurrentToPoolRunnerRequest
+  | SwitchToPoolRunnerRequest
+  | RefreshTokenPoolEntryUsageRequest
+  | ActivateTokenPoolEntryRequest
+  | DeleteTokenPoolEntryRequest
+  | MoveTokenPoolEntryRequest
+  | SetTokenPoolSettingsRequest
   | StartExportRequest
   | StartPreviewImportRequest
   | StartImportRequest
@@ -301,6 +372,7 @@ export type StateSnapshotEvent = {
     profilesRoot: string;
     activeProfileId?: string;
     profiles: ProfileSummary[];
+    tokenPool: TokenPoolSnapshot;
   };
 };
 

@@ -161,6 +161,17 @@ header p {
   border-left: none;
 }
 
+.hero-points {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 2px;
+  color: color-mix(in srgb, var(--fg) 92%, transparent);
+}
+
+.hero-points p {
+  margin: 0;
+}
+
 .risk {
   border-left: none;
 }
@@ -465,14 +476,13 @@ td {
 .accounts-table-wrap {
   width: 100%;
   max-width: 100%;
-  overflow-x: auto;
+  overflow-x: scroll;
   overflow-y: visible;
-  /* 必须 visible，否则下拉弹窗会被盖住/截断 */
   border: 1px solid var(--line);
   border-radius: 10px;
   position: relative;
-  /* 为弹窗预留底部空间（如果表格行很少导致往下弹窗时被包围卡住） */
   padding-bottom: 24px;
+  scrollbar-gutter: stable both-edges;
 }
 
 .accounts-table {
@@ -549,6 +559,214 @@ td {
 .action-delete-confirm {
   display: grid;
   gap: 6px;
+}
+
+.token-pool-panel {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.token-pool-import-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.token-pool-settings {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.token-pool-interval {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.token-pool-interval select {
+  width: auto;
+  min-width: 110px;
+}
+
+.token-pool-last-status,
+.token-pool-help,
+.token-pool-legend {
+  color: var(--muted);
+}
+
+.token-pool-runner-summary {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.token-pool-panel code {
+  color: var(--fg);
+}
+
+.token-pool-legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.token-pool-table-wrap {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  position: relative;
+}
+
+.token-pool-table-head,
+.token-pool-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 2.2fr) 72px 72px 72px 100px 138px 56px;
+  gap: 10px;
+  align-items: center;
+  width: max-content;
+  min-width: 790px;
+}
+
+.token-pool-table-head {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 0 10px 6px;
+}
+
+.token-pool-table-head-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: color-mix(in srgb, var(--card) 98%, transparent);
+}
+
+.token-pool-viewport {
+  position: relative;
+  overflow: auto;
+  background: color-mix(in srgb, var(--vscode-editor-background) 94%, transparent);
+  scrollbar-gutter: stable both-edges;
+}
+
+.token-pool-spacer {
+  position: relative;
+  min-height: 100%;
+  min-width: 790px;
+}
+
+.token-pool-row {
+  position: absolute;
+  left: 0;
+  width: max-content;
+  min-width: 790px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.token-pool-row.current {
+  background: color-mix(in srgb, var(--accent-2) 16%, transparent);
+}
+
+.token-pool-account-cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
+.token-pool-account-cell strong,
+.token-pool-account-cell small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.token-pool-account-cell em {
+  color: var(--accent);
+  font-style: normal;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.token-pool-actions-col {
+  min-width: 52px;
+  width: 52px;
+  text-align: center;
+}
+
+.token-pool-row .token-pool-actions-col {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: inherit;
+  box-shadow: none;
+  display: flex;
+  justify-content: center;
+}
+
+.token-pool-table-head .token-pool-actions-col {
+  position: sticky;
+  right: 0;
+  z-index: 3;
+  background: color-mix(in srgb, var(--card) 98%, transparent);
+  box-shadow: none;
+}
+
+.token-pool-row .account-actions-menu {
+  width: 100%;
+  justify-content: center;
+}
+
+.token-pool-empty {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.accounts-table-wrap,
+.token-pool-viewport {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--fg) 28%, transparent) transparent;
+}
+
+.accounts-table-wrap::-webkit-scrollbar,
+.token-pool-viewport::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.accounts-table-wrap::-webkit-scrollbar-track,
+.token-pool-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.accounts-table-wrap::-webkit-scrollbar-thumb,
+.token-pool-viewport::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--fg) 24%, transparent);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.accounts-table-wrap::-webkit-scrollbar-thumb:hover,
+.token-pool-viewport::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--fg) 36%, transparent);
+  background-clip: padding-box;
 }
 
 .thread-cleanup-panel {

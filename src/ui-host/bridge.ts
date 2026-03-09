@@ -5,10 +5,21 @@ import * as path from "path";
 import * as fs from "fs/promises";
 import { runExport } from "../engine/exporter";
 import { runImport } from "../engine/importer";
-import { activateProfile, createProfile, deleteProfile, getProfilesSnapshot, refreshProfilesUsage, type ProfilesSnapshot } from "../engine/profiles";
+import {
+  activateProfile,
+  createProfile,
+  deleteProfile,
+  getProfilesSnapshot,
+  refreshProfilesUsage,
+  syncCurrentCoreToProfile,
+  POOL_RUNNER_PROFILE_ID,
+  POOL_RUNNER_PROFILE_NAME,
+  type ProfilesSnapshot
+} from "../engine/profiles";
 import { writeReportBundle } from "../engine/report";
 import { previewImport } from "../engine/scanner";
 import { forceKillProcesses, relaunchKilledProcesses } from "../engine/processGuard";
+import { getTokenPoolService } from "../engine/tokenPool";
 import { executeThreadCleanup, previewThreadCleanup } from "../engine/threadCleanup";
 import { asAppError, ErrorCode } from "../protocol/errors";
 import type { ExportResult, ExportScope, RequestMessage, ResponseMessage } from "../protocol/messages";
@@ -303,6 +314,7 @@ async function resolveDefaultOutputDir(): Promise<string> {
 }
 
 async function emitSnapshot(webview: vscode.Webview, snapshot: ProfilesSnapshot): Promise<void> {
+  const tokenPool = await getTokenPoolService().getSnapshot(snapshot.codexHome);
   send(webview, {
     type: "STATE_SNAPSHOT",
     payload: {
@@ -311,7 +323,8 @@ async function emitSnapshot(webview: vscode.Webview, snapshot: ProfilesSnapshot)
       defaultOutputDir: await resolveDefaultOutputDir(),
       profilesRoot: snapshot.profilesRoot,
       activeProfileId: snapshot.activeProfileId,
-      profiles: snapshot.profiles
+      profiles: snapshot.profiles,
+      tokenPool
     }
   });
   for (const message of snapshot.messages) {
@@ -387,8 +400,63 @@ async function runActivateProfileRequest(target: WebviewTarget, msg: Extract<Req
   emitTaskLog(target.webview, "warn", "账号已切换。请重启 Codex App 或执行 Reload Window 以加载新账号会话。");
 }
 
+async function importTokenPoolFiles(webview: vscode.Webview, mode: "single" | "multiple"): Promise<void> {
+  const picked = await vscode.window.showOpenDialog({
+    title: mode === "single" ? "选择 token JSON" : "选择多个 token JSON",
+    canSelectMany: mode === "multiple",
+    canSelectFiles: true,
+    canSelectFolders: false,
+    filters: {
+      JSON: ["json"]
+    }
+  });
+  if (!picked || picked.length === 0) {
+    return;
+  }
+  await getTokenPoolService().importFiles(picked.map((item) => item.fsPath));
+  emitTaskLog(webview, "info", `账号池已导入 ${picked.length} 个 JSON 文件。`);
+}
+
+async function importTokenPoolDirectory(webview: vscode.Webview): Promise<void> {
+  const picked = await vscode.window.showOpenDialog({
+    title: "选择 token 目录",
+    canSelectMany: false,
+    canSelectFiles: false,
+    canSelectFolders: true
+  });
+  const targetDir = picked?.[0]?.fsPath;
+  if (!targetDir) {
+    return;
+  }
+  await getTokenPoolService().importDirectory(targetDir);
+  emitTaskLog(webview, "info", `账号池已导入目录中的 JSON：${targetDir}`);
+}
+
 export function bindBridge(target: WebviewTarget): vscode.Disposable {
-  return target.webview.onDidReceiveMessage(async (raw: unknown) => {
+  const tokenPoolService = getTokenPoolService();
+  let scheduledSnapshot: NodeJS.Timeout | undefined;
+  let preferredCodexHome: string | undefined;
+
+  function rememberCodexHome(codexHomeOverride?: string): string {
+    const resolved = resolveCodexHome(codexHomeOverride);
+    preferredCodexHome = resolved;
+    return resolved;
+  }
+
+  function scheduleStateSnapshot(codexHomeOverride?: string): void {
+    if (codexHomeOverride) {
+      rememberCodexHome(codexHomeOverride);
+    }
+    if (scheduledSnapshot) {
+      clearTimeout(scheduledSnapshot);
+    }
+    scheduledSnapshot = setTimeout(() => {
+      scheduledSnapshot = undefined;
+      void emitStateSnapshot(target.webview, preferredCodexHome);
+    }, 80);
+  }
+
+  const messageDisposable = target.webview.onDidReceiveMessage(async (raw: unknown) => {
     const logger = getLogger();
     const parsed = requestSchema.safeParse(raw);
     if (!parsed.success) {
@@ -403,21 +471,88 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
       return;
     }
 
-    const msg = parsed.data as RequestMessage;
+      const msg = parsed.data as RequestMessage;
 
     try {
       if (msg.type === "INIT") {
-        await emitStateSnapshot(target.webview);
+        await emitStateSnapshot(target.webview, rememberCodexHome());
         return;
       }
 
       if (msg.type === "REFRESH_PROFILES") {
-        await emitStateSnapshot(target.webview, msg.payload?.codexHome);
+        await emitStateSnapshot(target.webview, rememberCodexHome(msg.payload?.codexHome));
+        return;
+      }
+
+      if (msg.type === "IMPORT_TOKEN_POOL_FILES") {
+        await importTokenPoolFiles(target.webview, msg.payload.mode);
+        return;
+      }
+
+      if (msg.type === "IMPORT_TOKEN_POOL_DIRECTORY") {
+        await importTokenPoolDirectory(target.webview);
+        return;
+      }
+
+      if (msg.type === "SYNC_CURRENT_TO_POOL_RUNNER") {
+        const codexHome = resolveCodexHome(msg.payload?.codexHome);
+        rememberCodexHome(codexHome);
+        const snapshot = await syncCurrentCoreToProfile(codexHome, POOL_RUNNER_PROFILE_ID, POOL_RUNNER_PROFILE_NAME);
+        await emitSnapshot(target.webview, snapshot);
+        emitTaskLog(target.webview, "info", "已同步当前记录到 pool-runner。账号池后续只会操作该专用槽位。");
+        return;
+      }
+
+      if (msg.type === "SWITCH_TO_POOL_RUNNER") {
+        const codexHome = resolveCodexHome(msg.payload?.codexHome);
+        rememberCodexHome(codexHome);
+        const before = await getProfilesSnapshot(codexHome);
+        const hasPoolRunner = before.profiles.some((item) => item.id === POOL_RUNNER_PROFILE_ID && item.exists);
+        if (!hasPoolRunner) {
+          const synced = await syncCurrentCoreToProfile(codexHome, POOL_RUNNER_PROFILE_ID, POOL_RUNNER_PROFILE_NAME);
+          await emitSnapshot(target.webview, synced);
+          emitTaskLog(target.webview, "info", "未检测到 pool-runner，已先同步当前记录到该专用槽位。");
+        }
+        await runActivateProfileRequest(target, {
+          type: "ACTIVATE_PROFILE",
+          payload: {
+            codexHome,
+            profileId: POOL_RUNNER_PROFILE_ID,
+            backupCurrent: !!msg.payload?.backupCurrent,
+            switchMode: "plain"
+          }
+        });
+        return;
+      }
+
+      if (msg.type === "REFRESH_TOKEN_POOL_ENTRY_USAGE") {
+        await tokenPoolService.refreshEntryUsage(msg.payload.entryId, msg.payload.codexHome);
+        return;
+      }
+
+      if (msg.type === "ACTIVATE_TOKEN_POOL_ENTRY") {
+        await tokenPoolService.activateEntry(msg.payload.entryId, msg.payload.codexHome, "manual");
+        return;
+      }
+
+      if (msg.type === "DELETE_TOKEN_POOL_ENTRY") {
+        await tokenPoolService.deleteEntry(msg.payload.entryId);
+        return;
+      }
+
+      if (msg.type === "MOVE_TOKEN_POOL_ENTRY") {
+        await tokenPoolService.moveEntry(msg.payload.entryId, msg.payload.direction);
+        return;
+      }
+
+      if (msg.type === "SET_TOKEN_POOL_SETTINGS") {
+        await tokenPoolService.setSettings(msg.payload);
         return;
       }
 
       if (msg.type === "REFRESH_PROFILE_USAGE") {
         const codexHome = resolveCodexHome(msg.payload?.codexHome);
+        rememberCodexHome(codexHome);
         const snapshot = await refreshProfilesUsage(codexHome, msg.payload?.profileId);
         await emitSnapshot(target.webview, snapshot);
         return;
@@ -425,6 +560,7 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
 
       if (msg.type === "CREATE_PROFILE") {
         const codexHome = resolveCodexHome(msg.payload.codexHome);
+        rememberCodexHome(codexHome);
         const snapshot = await createProfile(codexHome, msg.payload.name);
         await emitSnapshot(target.webview, snapshot);
         return;
@@ -438,6 +574,7 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
 
       if (msg.type === "DELETE_PROFILE") {
         const codexHome = resolveCodexHome(msg.payload.codexHome);
+        rememberCodexHome(codexHome);
         const snapshot = await deleteProfile(codexHome, msg.payload.profileId);
         await emitSnapshot(target.webview, snapshot);
         return;
@@ -479,6 +616,7 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
 
       if (msg.type === "START_EXPORT" && (msg.payload.scope || msg.payload.profileId)) {
         const codexHome = await resolveAndValidateCodexHome(msg.payload.codexHome);
+        rememberCodexHome(codexHome);
         const scope = normalizeExportScope(msg.payload.scope, msg.payload.profileId);
         const snapshot = await getProfilesSnapshot(codexHome);
         const exportTargets = resolveExportTargets(snapshot, codexHome, scope, msg.payload.profileId);
@@ -561,6 +699,7 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
 
       if (msg.type === "START_EXPORT") {
         const codexHome = await resolveAndValidateCodexHome(msg.payload.codexHome);
+        rememberCodexHome(codexHome);
         emitTaskLog(target.webview, "info", `开始导出（模式=${msg.payload.mode}）`);
         emitTaskLog(target.webview, "info", `Codex 目录: ${codexHome}`);
         send(target.webview, { type: "TASK_PROGRESS", payload: { step: "export", percent: 15, message: "准备导出" } });
@@ -583,6 +722,7 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
 
       if (msg.type === "START_PREVIEW_IMPORT") {
         const codexHome = path.resolve(resolveCodexHome(msg.payload.codexHome));
+        rememberCodexHome(codexHome);
         emitTaskLog(target.webview, "info", `开始预演（模式=${msg.payload.mode}）`);
         emitTaskLog(target.webview, "info", `目标 Codex 目录: ${codexHome}`);
         emitTaskLog(target.webview, "info", `备份 ZIP: ${path.resolve(msg.payload.backupZip)}`);
@@ -605,6 +745,7 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
 
       if (msg.type === "START_IMPORT") {
         const codexHome = path.resolve(resolveCodexHome(msg.payload.codexHome));
+        rememberCodexHome(codexHome);
         emitTaskLog(target.webview, "info", `开始导入（模式=${msg.payload.mode}）`);
         emitTaskLog(target.webview, "info", `目标 Codex 目录: ${codexHome}`);
         emitTaskLog(target.webview, "info", `备份 ZIP: ${path.resolve(msg.payload.backupZip)}`);
@@ -628,6 +769,7 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
 
       if (msg.type === "START_IMPORT_TO_NEW_PROFILE") {
         const codexHome = path.resolve(resolveCodexHome(msg.payload.codexHome));
+        rememberCodexHome(codexHome);
         const profileName = msg.payload.profileName.trim();
         if (profileName.length === 0) {
           throw new Error("新账号名称不能为空。");
@@ -669,6 +811,7 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
 
       if (msg.type === "PREVIEW_THREAD_CLEANUP") {
         const codexHome = await resolveAndValidateCodexHome(msg.payload.codexHome);
+        rememberCodexHome(codexHome);
         emitTaskLog(target.webview, "info", `开始对话清理预览（范围=${msg.payload.scope}）`);
         send(target.webview, { type: "TASK_PROGRESS", payload: { step: "thread-cleanup-preview", percent: 15, message: "扫描匹配线程" } });
         const result = await previewThreadCleanup({
@@ -689,6 +832,7 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
 
       if (msg.type === "START_THREAD_CLEANUP") {
         const codexHome = await resolveAndValidateCodexHome(msg.payload.codexHome);
+        rememberCodexHome(codexHome);
         emitTaskLog(
           target.webview,
           "info",
@@ -744,5 +888,20 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
       emitTaskLog(target.webview, "error", `${appError.code}: ${appError.message}`);
       send(target.webview, { type: "TASK_ERROR", payload: appError });
     }
+  });
+  const tokenPoolLogDisposable = tokenPoolService.onDidLog(({ level, message }) => {
+    emitTaskLog(target.webview, level, message);
+  });
+  const tokenPoolChangeDisposable = tokenPoolService.onDidChange(() => {
+    scheduleStateSnapshot();
+  });
+  return new vscode.Disposable(() => {
+    if (scheduledSnapshot) {
+      clearTimeout(scheduledSnapshot);
+      scheduledSnapshot = undefined;
+    }
+    messageDisposable.dispose();
+    tokenPoolLogDisposable.dispose();
+    tokenPoolChangeDisposable.dispose();
   });
 }

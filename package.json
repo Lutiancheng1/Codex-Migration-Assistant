@@ -1,7 +1,7 @@
 {
   "name": "codex-migration-assistant",
   "displayName": "Codex 迁移助手",
-  "description": "面向 Codex 的账号切换、数据迁移、备份恢复与会话清理扩展。",
+  "description": "用于 Codex 的跨设备记录迁移、当前设备多账号槽位切换、pool-runner 账号池无感换号与会话清理。",
   "version": "0.1.1",
   "publisher": "local",
   "license": "MIT",
@@ -24,7 +24,10 @@
     "import",
     "export",
     "profile-switch",
-    "session-cleanup"
+    "session-cleanup",
+    "token-pool",
+    "auth-switch",
+    "multi-device-sync"
   ],
   "activationEvents": [
     "onView:codexMigration.sidebarView",

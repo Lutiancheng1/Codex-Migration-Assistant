@@ -66,6 +66,8 @@ type UsageCacheEntry = {
 const usageCache = new Map<string, UsageCacheEntry>();
 const GLOBAL_STATE_FILE = ".codex-global-state.json";
 const CONFIG_FILE = "config.toml";
+export const POOL_RUNNER_PROFILE_ID = "pool-runner";
+export const POOL_RUNNER_PROFILE_NAME = "账号池运行槽位";
 
 type TomlSection = {
   header?: string;
@@ -260,6 +262,10 @@ function setUsageCache(profilePath: string, entry: UsageCacheEntry): void {
     return;
   }
   usageCache.set(key, entry);
+}
+
+export function invalidateProfileUsage(profilePath: string): void {
+  usageCache.delete(usageCacheKey(profilePath));
 }
 
 function derivePaths(codexHomeInput: string): Paths {
@@ -688,6 +694,84 @@ export async function createProfile(codexHome: string, profileName: string): Pro
   const snapshot = await getProfilesSnapshot(codexHome);
   snapshot.messages.unshift(...messages);
   return snapshot;
+}
+
+async function ensureFixedProfileSlot(
+  paths: Paths,
+  metadata: ProfilesMetadata,
+  profileId: string,
+  profileName: string,
+  messages: string[]
+): Promise<StoredProfile> {
+  const existing = metadata.profiles.find((item) => item.id === profileId);
+  if (existing) {
+    if (!(await statSafe(existing.path))?.isDirectory()) {
+      await createEmptyProfileSkeleton(existing.path);
+    }
+    return existing;
+  }
+
+  const createdAt = nowIso();
+  const profilePath = path.join(paths.profilesRoot, profileId);
+  await ensureDir(paths.profilesRoot);
+  if (!(await statSafe(profilePath))?.isDirectory()) {
+    await createEmptyProfileSkeleton(profilePath);
+  }
+  const templateSourcePath = await resolveTemplateSourcePath(paths, metadata);
+  if (templateSourcePath) {
+    await copyFileIfExists(path.join(templateSourcePath, CONFIG_FILE), path.join(profilePath, CONFIG_FILE));
+  }
+
+  const created: StoredProfile = {
+    id: profileId,
+    name: profileName,
+    path: profilePath,
+    createdAt,
+    updatedAt: createdAt
+  };
+  metadata.profiles.push(created);
+  messages.push(`已创建专用账号槽位: ${profileName} (${profileId})`);
+  return created;
+}
+
+export async function ensureProfileSlot(codexHome: string, profileId: string, profileName: string): Promise<ProfilesSnapshot> {
+  const loaded = await loadBootstrappedMetadata(codexHome);
+  const { paths, metadata, messages } = loaded;
+  await ensureFixedProfileSlot(paths, metadata, profileId, profileName, messages);
+  await writeMetadata(paths, metadata);
+  return toSnapshot(paths, metadata, messages);
+}
+
+export async function syncCurrentCoreToProfile(
+  codexHome: string,
+  targetProfileId: string,
+  targetProfileName: string
+): Promise<ProfilesSnapshot> {
+  const loaded = await loadBootstrappedMetadata(codexHome);
+  const { paths, metadata, messages } = loaded;
+  const target = await ensureFixedProfileSlot(paths, metadata, targetProfileId, targetProfileName, messages);
+  const activeProfileId = metadata.activeProfileId ?? (await inferActiveProfileId(paths, metadata));
+
+  let sourcePath = paths.codexHome;
+  let sourceName = "当前账号";
+  if (activeProfileId && activeProfileId !== "live") {
+    const active = findProfileById(metadata, activeProfileId);
+    sourcePath = active.path;
+    sourceName = active.name;
+  }
+
+  if (activeProfileId === targetProfileId || samePath(sourcePath, target.path)) {
+    messages.push(`当前已在 ${target.name}，无需同步记录。`);
+    await writeMetadata(paths, metadata);
+    return toSnapshot(paths, metadata, messages);
+  }
+
+  await overwriteCurrentIntoTargetProfile(sourcePath, target.path, messages);
+  target.updatedAt = nowIso();
+  await writeMetadata(paths, metadata);
+  messages.push(`已将 ${sourceName} 的当前记录同步到 ${target.name}。`);
+  invalidateProfileUsage(target.path);
+  return toSnapshot(paths, metadata, messages);
 }
 
 export async function refreshProfilesUsage(codexHome: string, profileId?: string): Promise<ProfilesSnapshot> {
@@ -1265,7 +1349,7 @@ export async function deleteProfile(codexHome: string, profileId: string): Promi
     throw err;
   }
 
-  usageCache.delete(usageCacheKey(target.path));
+  invalidateProfileUsage(target.path);
   await fs.rm(target.path, { recursive: true, force: true });
   metadata.profiles = metadata.profiles.filter((item) => item.id !== profileId);
   await writeMetadata(paths, metadata);

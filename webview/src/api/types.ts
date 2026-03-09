@@ -37,6 +37,38 @@ export type ProfileSummary = {
   usageError?: string;
 };
 
+export type TokenPoolStatus = "neverChecked" | "available" | "exhausted" | "authInvalid" | "incomplete";
+
+export type TokenPoolSettings = {
+  autoSwitchEnabled: boolean;
+  pollIntervalMs: number;
+  autoRelaunchAfterSwitch: boolean;
+};
+
+export type TokenPoolEntry = {
+  id: string;
+  email?: string;
+  accountId: string;
+  type?: string;
+  expired?: string;
+  lastRefresh?: string;
+  importedAt: string;
+  updatedAt: string;
+  planTypeHint?: string;
+  usage?: ProfileUsageSummary;
+  usageError?: string;
+  status: TokenPoolStatus;
+  current: boolean;
+};
+
+export type TokenPoolSnapshot = {
+  activeEntryId?: string;
+  settings: TokenPoolSettings;
+  lastAutoSwitchAt?: string;
+  lastAutoSwitchMessage?: string;
+  entries: TokenPoolEntry[];
+};
+
 export type RequestMessage =
   | { type: "INIT" }
   | { type: "REFRESH_PROFILES"; payload?: { codexHome?: string } }
@@ -45,6 +77,18 @@ export type RequestMessage =
   | { type: "PICK_DEFAULT_BACKUP"; payload?: { directory?: string } }
   | { type: "OPEN_IN_OS"; payload: { path: string } }
   | { type: "CREATE_PROFILE"; payload: { codexHome?: string; name: string } }
+  | { type: "IMPORT_TOKEN_POOL_FILES"; payload: { mode: "single" | "multiple" } }
+  | { type: "IMPORT_TOKEN_POOL_DIRECTORY" }
+  | { type: "SYNC_CURRENT_TO_POOL_RUNNER"; payload?: { codexHome?: string } }
+  | { type: "SWITCH_TO_POOL_RUNNER"; payload?: { codexHome?: string; backupCurrent?: boolean } }
+  | { type: "REFRESH_TOKEN_POOL_ENTRY_USAGE"; payload: { codexHome?: string; entryId: string } }
+  | { type: "ACTIVATE_TOKEN_POOL_ENTRY"; payload: { codexHome?: string; entryId: string } }
+  | { type: "DELETE_TOKEN_POOL_ENTRY"; payload: { entryId: string } }
+  | { type: "MOVE_TOKEN_POOL_ENTRY"; payload: { entryId: string; direction: "up" | "down" } }
+  | {
+    type: "SET_TOKEN_POOL_SETTINGS";
+    payload: { autoSwitchEnabled?: boolean; pollIntervalMs?: number; autoRelaunchAfterSwitch?: boolean };
+  }
   | {
     type: "ACTIVATE_PROFILE";
     payload: {
@@ -274,6 +318,7 @@ export type ResponseMessage =
       profilesRoot: string;
       activeProfileId?: string;
       profiles: ProfileSummary[];
+      tokenPool: TokenPoolSnapshot;
     };
   }
   | { type: "PATH_PICKED"; payload: { path?: string } }

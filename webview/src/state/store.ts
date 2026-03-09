@@ -3,6 +3,7 @@ import type {
   ImportResult,
   PreviewResult,
   ProfileSummary,
+  TokenPoolSnapshot,
   SwitchProfileResult,
   ThreadCleanupPreviewResult,
   ThreadCleanupResult,
@@ -17,6 +18,7 @@ export type UiState = {
   profilesRoot: string;
   profiles: ProfileSummary[];
   activeProfileId?: string;
+  tokenPool: TokenPoolSnapshot;
   backupBeforeSwitch: boolean;
   newProfileName: string;
   outputDir: string;
@@ -46,6 +48,15 @@ export const initialState: UiState = {
   profilesRoot: "",
   profiles: [],
   activeProfileId: undefined,
+  tokenPool: {
+    activeEntryId: undefined,
+    settings: {
+      autoSwitchEnabled: false,
+      pollIntervalMs: 5 * 60 * 1000,
+      autoRelaunchAfterSwitch: false
+    },
+    entries: []
+  },
   backupBeforeSwitch: false,
   newProfileName: "",
   outputDir: "",

@@ -66,6 +66,67 @@ export const requestSchema = z.discriminatedUnion("type", [
     })
   }),
   z.object({
+    type: z.literal("IMPORT_TOKEN_POOL_FILES"),
+    payload: z.object({
+      mode: z.enum(["single", "multiple"])
+    })
+  }),
+  z.object({
+    type: z.literal("IMPORT_TOKEN_POOL_DIRECTORY")
+  }),
+  z.object({
+    type: z.literal("SYNC_CURRENT_TO_POOL_RUNNER"),
+    payload: z
+      .object({
+        codexHome: z.string().optional()
+      })
+      .optional()
+  }),
+  z.object({
+    type: z.literal("SWITCH_TO_POOL_RUNNER"),
+    payload: z
+      .object({
+        codexHome: z.string().optional(),
+        backupCurrent: z.boolean().optional()
+      })
+      .optional()
+  }),
+  z.object({
+    type: z.literal("REFRESH_TOKEN_POOL_ENTRY_USAGE"),
+    payload: z.object({
+      codexHome: z.string().optional(),
+      entryId: z.string().min(1)
+    })
+  }),
+  z.object({
+    type: z.literal("ACTIVATE_TOKEN_POOL_ENTRY"),
+    payload: z.object({
+      codexHome: z.string().optional(),
+      entryId: z.string().min(1)
+    })
+  }),
+  z.object({
+    type: z.literal("DELETE_TOKEN_POOL_ENTRY"),
+    payload: z.object({
+      entryId: z.string().min(1)
+    })
+  }),
+  z.object({
+    type: z.literal("MOVE_TOKEN_POOL_ENTRY"),
+    payload: z.object({
+      entryId: z.string().min(1),
+      direction: z.enum(["up", "down"])
+    })
+  }),
+  z.object({
+    type: z.literal("SET_TOKEN_POOL_SETTINGS"),
+    payload: z.object({
+      autoSwitchEnabled: z.boolean().optional(),
+      pollIntervalMs: z.number().optional(),
+      autoRelaunchAfterSwitch: z.boolean().optional()
+    })
+  }),
+  z.object({
     type: z.literal("START_EXPORT"),
     payload: z.object({
       codexHome: z.string().optional(),

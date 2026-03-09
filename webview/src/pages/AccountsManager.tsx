@@ -3,17 +3,23 @@ import { createPortal } from "react-dom";
 import type {
   ProfileSummary,
   ProfileUsageWindow,
+  TokenPoolSnapshot,
   ThreadCleanupApplyMode,
   ThreadCleanupPreviewResult,
   ThreadCleanupResult,
   ThreadCleanupScope
 } from "../api/types";
 import { InfoHint } from "../components/InfoHint";
+import { TokenPoolPanel } from "./TokenPoolPanel";
+
+const POOL_RUNNER_PROFILE_ID = "pool-runner";
 
 type Props = {
+  codexHome: string;
   profilesRoot: string;
   profiles: ProfileSummary[];
   activeProfileId?: string;
+  tokenPool: TokenPoolSnapshot;
   backupBeforeSwitch: boolean;
   newProfileName: string;
   threadCleanupInput: string;
@@ -25,6 +31,16 @@ type Props = {
   onChange(field: string, value: string | boolean): void;
   onRefresh(): void;
   onRefreshUsage(profileId?: string): void;
+  onImportTokenPoolSingle(): void;
+  onImportTokenPoolMultiple(): void;
+  onImportTokenPoolDirectory(): void;
+  onSyncCurrentToPoolRunner(): void;
+  onSwitchToPoolRunner(): void;
+  onRefreshTokenPoolEntry(entryId: string): void;
+  onActivateTokenPoolEntry(entryId: string): void;
+  onDeleteTokenPoolEntry(entryId: string): void;
+  onMoveTokenPoolEntry(entryId: string, direction: "up" | "down"): void;
+  onUpdateTokenPoolSettings(next: { autoSwitchEnabled?: boolean; pollIntervalMs?: number; autoRelaunchAfterSwitch?: boolean }): void;
   onExportProfile(profileId: string): void;
   onCreate(): void;
   onActivate(profileId: string): void;
@@ -71,6 +87,7 @@ function computeCleanupSummary(preview?: ThreadCleanupPreviewResult): {
 
 export function AccountsManager(props: Props): JSX.Element {
   const activeProfile = props.profiles.find((item) => item.id === props.activeProfileId);
+  const poolRunnerProfile = props.profiles.find((item) => item.id === POOL_RUNNER_PROFILE_ID);
   const canCreate = props.newProfileName.trim().length > 0;
   const [pendingDeleteProfileId, setPendingDeleteProfileId] = useState<string>();
   const [pendingMergeProfileId, setPendingMergeProfileId] = useState<string>();
@@ -79,11 +96,14 @@ export function AccountsManager(props: Props): JSX.Element {
   const [actionAnchorRect, setActionAnchorRect] = useState<DOMRect | undefined>();
   const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(5 * 60 * 1000);
   const [pendingCleanupMode, setPendingCleanupMode] = useState<ThreadCleanupApplyMode>();
+  const [isTokenPoolExpanded, setIsTokenPoolExpanded] = useState<boolean>(false);
   const [isThreadCleanupExpanded, setIsThreadCleanupExpanded] = useState<boolean>(false);
   const [isCleanupPreviewModalOpen, setIsCleanupPreviewModalOpen] = useState<boolean>(false);
   const [isCleanupResultModalOpen, setIsCleanupResultModalOpen] = useState<boolean>(false);
   const lastPreviewRef = React.useRef<ThreadCleanupPreviewResult | undefined>();
   const lastResultRef = React.useRef<ThreadCleanupResult | undefined>();
+  const refreshUsageRef = React.useRef(props.onRefreshUsage);
+  const profilesCountRef = React.useRef(props.profiles.length);
   const cleanupSummary = useMemo(() => computeCleanupSummary(props.threadCleanupPreview), [props.threadCleanupPreview]);
   const canPreviewCleanup =
     props.threadCleanupInput.trim().length > 0 &&
@@ -92,23 +112,28 @@ export function AccountsManager(props: Props): JSX.Element {
   const initialRefreshDone = React.useRef(false);
 
   useEffect(() => {
+    refreshUsageRef.current = props.onRefreshUsage;
+    profilesCountRef.current = props.profiles.length;
+  }, [props.onRefreshUsage, props.profiles.length]);
+
+  useEffect(() => {
     if (props.profiles.length > 0 && !initialRefreshDone.current) {
       initialRefreshDone.current = true;
-      props.onRefreshUsage();
+      refreshUsageRef.current();
     }
-  }, [props.profiles, props.onRefreshUsage]);
+  }, [props.profiles.length]);
 
   useEffect(() => {
     if (autoRefreshInterval <= 0) {
       return;
     }
     const timer = setInterval(() => {
-      if (props.profiles.length > 0) {
-        props.onRefreshUsage();
+      if (profilesCountRef.current > 0) {
+        refreshUsageRef.current();
       }
     }, autoRefreshInterval);
     return () => clearInterval(timer);
-  }, [autoRefreshInterval, props.profiles, props.onRefreshUsage]);
+  }, [autoRefreshInterval]);
 
   useEffect(() => {
     if (!openActionProfileId) {
@@ -427,6 +452,38 @@ export function AccountsManager(props: Props): JSX.Element {
             </div>
           )
         : null}
+
+      <section className="thread-cleanup-panel">
+        <button
+          type="button"
+          className="thread-cleanup-toggle"
+          onClick={() => setIsTokenPoolExpanded((prev) => !prev)}
+          aria-expanded={isTokenPoolExpanded}
+        >
+          <h3>账号池</h3>
+          <span className="thread-cleanup-toggle-icon">{isTokenPoolExpanded ? "▾" : "▸"}</span>
+        </button>
+
+        {isTokenPoolExpanded ? (
+          <TokenPoolPanel
+            codexHome={props.codexHome}
+            tokenPool={props.tokenPool}
+            activeProfileId={props.activeProfileId}
+            activeProfileName={activeProfile?.name}
+            poolRunnerProfile={poolRunnerProfile}
+            onImportSingle={props.onImportTokenPoolSingle}
+            onImportMultiple={props.onImportTokenPoolMultiple}
+            onImportDirectory={props.onImportTokenPoolDirectory}
+            onSyncCurrentToPoolRunner={props.onSyncCurrentToPoolRunner}
+            onSwitchToPoolRunner={props.onSwitchToPoolRunner}
+            onRefreshEntry={props.onRefreshTokenPoolEntry}
+            onActivateEntry={props.onActivateTokenPoolEntry}
+            onDeleteEntry={props.onDeleteTokenPoolEntry}
+            onMoveEntry={props.onMoveTokenPoolEntry}
+            onUpdateSettings={props.onUpdateTokenPoolSettings}
+          />
+        ) : null}
+      </section>
 
       <section className="thread-cleanup-panel">
         <button

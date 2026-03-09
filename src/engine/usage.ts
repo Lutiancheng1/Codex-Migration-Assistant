@@ -46,12 +46,12 @@ export type ProfileUsageSummary = {
   };
 };
 
-type AuthIdentity = {
+export type AuthIdentity = {
   accessToken: string;
   accountId: string;
 };
 
-function decodeJwtPayload(token: string): Record<string, unknown> | undefined {
+export function decodeJwtPayload(token: string): Record<string, unknown> | undefined {
   const segment = token.split(".")[1];
   if (!segment) {
     return undefined;
@@ -66,7 +66,7 @@ function decodeJwtPayload(token: string): Record<string, unknown> | undefined {
   }
 }
 
-function extractAccountIdFromClaims(payload: Record<string, unknown> | undefined): string | undefined {
+export function extractAccountIdFromClaims(payload: Record<string, unknown> | undefined): string | undefined {
   if (!payload) {
     return undefined;
   }
@@ -76,6 +76,23 @@ function extractAccountIdFromClaims(payload: Record<string, unknown> | undefined
   }
   const accountId = (authClaim as Record<string, unknown>).chatgpt_account_id;
   return typeof accountId === "string" && accountId.trim().length > 0 ? accountId : undefined;
+}
+
+export function extractEmailFromClaims(payload: Record<string, unknown> | undefined): string | undefined {
+  const email = payload?.email;
+  return typeof email === "string" && email.trim().length > 0 ? email.trim() : undefined;
+}
+
+export function extractPlanTypeFromClaims(payload: Record<string, unknown> | undefined): string | undefined {
+  if (!payload) {
+    return undefined;
+  }
+  const authClaim = payload["https://api.openai.com/auth"];
+  if (!authClaim || typeof authClaim !== "object") {
+    return undefined;
+  }
+  const planType = (authClaim as Record<string, unknown>).chatgpt_plan_type;
+  return typeof planType === "string" && planType.trim().length > 0 ? planType.trim() : undefined;
 }
 
 async function readAuthIdentity(profilePath: string): Promise<AuthIdentity> {
@@ -259,11 +276,8 @@ async function fetchUsage(url: string, identity: AuthIdentity): Promise<UsageApi
   }
 }
 
-export async function fetchProfileUsage(profilePath: string): Promise<ProfileUsageSummary> {
-  const identity = await readAuthIdentity(profilePath);
-  const baseUrl = await readChatgptBaseUrl(profilePath);
+export async function fetchUsageForIdentity(identity: AuthIdentity, baseUrl?: string): Promise<ProfileUsageSummary> {
   const urls = resolveUsageUrls(baseUrl);
-
   const errors: string[] = [];
   for (const url of urls) {
     try {
@@ -273,6 +287,11 @@ export async function fetchProfileUsage(profilePath: string): Promise<ProfileUsa
       errors.push(`${url} -> ${(error as Error).message}`);
     }
   }
-
   throw new Error(errors.slice(0, 3).join(" | "));
+}
+
+export async function fetchProfileUsage(profilePath: string): Promise<ProfileUsageSummary> {
+  const identity = await readAuthIdentity(profilePath);
+  const baseUrl = await readChatgptBaseUrl(profilePath);
+  return fetchUsageForIdentity(identity, baseUrl);
 }
