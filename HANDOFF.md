@@ -1,6 +1,6 @@
 # Codex Migration Extension Handoff
 
-最后更新：2026-03-09（v1.0.1 修复 token pool 切换与 Windows 拉起问题）
+最后更新：2026-03-09（账号页改为账号池优先布局）
 
 ## 项目快照
 
@@ -335,6 +335,14 @@ Get-StartApps | Where-Object { $_.Name -like "*Codex*" } | Format-Table Name, Ap
 
 5. token pool Webview 刷新过重导致 CPU 占用偏高、点击卡顿
    - 现已通过 bridge 快照合并和稳定定时器降低重复刷新
+
+6. 账号页主布局调整
+   - 账号池从原来嵌在账号管理区域内部，改成独立抽屉
+   - 顺序调整为：
+     - 账号池（上方，默认展开）
+     - 账号管理与切换（下方，默认收起）
+     - 对话清理
+   - 这样更符合当前高频使用场景：优先用账号池做无感换号，低频时再展开账号管理
 
 ## 关键文件
 

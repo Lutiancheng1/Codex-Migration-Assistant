@@ -96,7 +96,8 @@ export function AccountsManager(props: Props): JSX.Element {
   const [actionAnchorRect, setActionAnchorRect] = useState<DOMRect | undefined>();
   const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(5 * 60 * 1000);
   const [pendingCleanupMode, setPendingCleanupMode] = useState<ThreadCleanupApplyMode>();
-  const [isTokenPoolExpanded, setIsTokenPoolExpanded] = useState<boolean>(false);
+  const [isTokenPoolExpanded, setIsTokenPoolExpanded] = useState<boolean>(true);
+  const [isProfilesExpanded, setIsProfilesExpanded] = useState<boolean>(false);
   const [isThreadCleanupExpanded, setIsThreadCleanupExpanded] = useState<boolean>(false);
   const [isCleanupPreviewModalOpen, setIsCleanupPreviewModalOpen] = useState<boolean>(false);
   const [isCleanupResultModalOpen, setIsCleanupResultModalOpen] = useState<boolean>(false);
@@ -197,6 +198,51 @@ export function AccountsManager(props: Props): JSX.Element {
 
   return (
     <section>
+      <section className="thread-cleanup-panel">
+        <button
+          type="button"
+          className="thread-cleanup-toggle"
+          onClick={() => setIsTokenPoolExpanded((prev) => !prev)}
+          aria-expanded={isTokenPoolExpanded}
+        >
+          <h3>账号池</h3>
+          <span className="thread-cleanup-toggle-icon">{isTokenPoolExpanded ? "▾" : "▸"}</span>
+        </button>
+
+        {isTokenPoolExpanded ? (
+          <TokenPoolPanel
+            codexHome={props.codexHome}
+            tokenPool={props.tokenPool}
+            activeProfileId={props.activeProfileId}
+            activeProfileName={activeProfile?.name}
+            poolRunnerProfile={poolRunnerProfile}
+            onImportSingle={props.onImportTokenPoolSingle}
+            onImportMultiple={props.onImportTokenPoolMultiple}
+            onImportDirectory={props.onImportTokenPoolDirectory}
+            onSyncCurrentToPoolRunner={props.onSyncCurrentToPoolRunner}
+            onSwitchToPoolRunner={props.onSwitchToPoolRunner}
+            onRefreshEntry={props.onRefreshTokenPoolEntry}
+            onActivateEntry={props.onActivateTokenPoolEntry}
+            onDeleteEntry={props.onDeleteTokenPoolEntry}
+            onMoveEntry={props.onMoveTokenPoolEntry}
+            onUpdateSettings={props.onUpdateTokenPoolSettings}
+          />
+        ) : null}
+      </section>
+
+      <section className="thread-cleanup-panel">
+        <button
+          type="button"
+          className="thread-cleanup-toggle"
+          onClick={() => setIsProfilesExpanded((prev) => !prev)}
+          aria-expanded={isProfilesExpanded}
+        >
+          <h3>账号管理与切换</h3>
+          <span className="thread-cleanup-toggle-icon">{isProfilesExpanded ? "▾" : "▸"}</span>
+        </button>
+
+        {isProfilesExpanded ? (
+          <>
       <div className="grid">
         <p><strong>账号目录根：</strong> {props.profilesRoot || "未初始化"}</p>
         <p><strong>当前激活：</strong> {activeProfile ? `${activeProfile.name} (${activeProfile.id})` : "未识别"}</p>
@@ -452,36 +498,7 @@ export function AccountsManager(props: Props): JSX.Element {
             </div>
           )
         : null}
-
-      <section className="thread-cleanup-panel">
-        <button
-          type="button"
-          className="thread-cleanup-toggle"
-          onClick={() => setIsTokenPoolExpanded((prev) => !prev)}
-          aria-expanded={isTokenPoolExpanded}
-        >
-          <h3>账号池</h3>
-          <span className="thread-cleanup-toggle-icon">{isTokenPoolExpanded ? "▾" : "▸"}</span>
-        </button>
-
-        {isTokenPoolExpanded ? (
-          <TokenPoolPanel
-            codexHome={props.codexHome}
-            tokenPool={props.tokenPool}
-            activeProfileId={props.activeProfileId}
-            activeProfileName={activeProfile?.name}
-            poolRunnerProfile={poolRunnerProfile}
-            onImportSingle={props.onImportTokenPoolSingle}
-            onImportMultiple={props.onImportTokenPoolMultiple}
-            onImportDirectory={props.onImportTokenPoolDirectory}
-            onSyncCurrentToPoolRunner={props.onSyncCurrentToPoolRunner}
-            onSwitchToPoolRunner={props.onSwitchToPoolRunner}
-            onRefreshEntry={props.onRefreshTokenPoolEntry}
-            onActivateEntry={props.onActivateTokenPoolEntry}
-            onDeleteEntry={props.onDeleteTokenPoolEntry}
-            onMoveEntry={props.onMoveTokenPoolEntry}
-            onUpdateSettings={props.onUpdateTokenPoolSettings}
-          />
+          </>
         ) : null}
       </section>
 
