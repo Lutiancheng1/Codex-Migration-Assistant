@@ -22,7 +22,7 @@ import { forceKillProcesses, relaunchKilledProcesses } from "../engine/processGu
 import { getTokenPoolService } from "../engine/tokenPool";
 import { executeThreadCleanup, previewThreadCleanup } from "../engine/threadCleanup";
 import { asAppError, ErrorCode } from "../protocol/errors";
-import type { ExportResult, ExportScope, RequestMessage, ResponseMessage } from "../protocol/messages";
+import type { ExportResult, ExportScope, ProfileSwitchMode, RequestMessage, ResponseMessage } from "../protocol/messages";
 import { requestSchema } from "../protocol/schema";
 import { resolveAndValidateCodexHome } from "../engine/codexHome";
 import { resolveCodexHome } from "../util/path";
@@ -283,6 +283,23 @@ type WebviewTarget = { webview: vscode.Webview };
 let emittedUninitializedHint = false;
 let pendingRelaunchCommands: string[] = [];
 let pendingActivateAfterKill: Extract<RequestMessage, { type: "ACTIVATE_PROFILE" }> | undefined;
+
+function rememberActivateAfterKill(
+  codexHome: string,
+  profileId: string,
+  backupCurrent: boolean | undefined,
+  switchMode: ProfileSwitchMode | undefined
+): void {
+  pendingActivateAfterKill = {
+    type: "ACTIVATE_PROFILE",
+    payload: {
+      codexHome,
+      profileId,
+      backupCurrent: !!backupCurrent,
+      switchMode: switchMode ?? "plain"
+    }
+  };
+}
 
 function resolveCreatedProfile(
   before: ProfilesSnapshot,
@@ -881,8 +898,13 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
       }
     } catch (err) {
       const appError = asAppError(err, ErrorCode.Unknown);
-      if (appError.code === ErrorCode.FileLocked && msg.type === "ACTIVATE_PROFILE") {
-        pendingActivateAfterKill = msg;
+      if (appError.code === ErrorCode.FileLocked) {
+        if (msg.type === "ACTIVATE_PROFILE") {
+          pendingActivateAfterKill = msg;
+        } else if (msg.type === "SWITCH_TO_POOL_RUNNER") {
+          const codexHome = resolveCodexHome(msg.payload?.codexHome);
+          rememberActivateAfterKill(codexHome, POOL_RUNNER_PROFILE_ID, msg.payload?.backupCurrent, "plain");
+        }
       }
       logger.appendLine(`[error] ${appError.code}: ${appError.message}`);
       emitTaskLog(target.webview, "error", `${appError.code}: ${appError.message}`);

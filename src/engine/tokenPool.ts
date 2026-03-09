@@ -605,8 +605,8 @@ class TokenPoolService implements vscode.Disposable {
 
   async activateEntry(entryId: string, codexHomeOverride?: string, reason: "manual" | "auto" = "manual"): Promise<TokenPoolSnapshot> {
     const meta = this.readMeta();
-    const entry = meta.entries.find((item) => item.id === entryId);
-    if (!entry) {
+    const initialIndex = meta.entries.findIndex((item) => item.id === entryId);
+    if (initialIndex < 0) {
       throw new Error("未找到账号池条目。");
     }
     const secret = await this.readSecret(entryId);
@@ -621,8 +621,23 @@ class TokenPoolService implements vscode.Disposable {
     if (!poolRunner.active) {
       throw new Error("账号池只允许在 pool-runner 槽位中操作。请先切换到 pool-runner，再执行 token 切换。");
     }
-    if (reason === "manual" && entry.status === "exhausted") {
-      throw new Error(`账号 ${entry.email || entry.accountId} 当前额度已用尽，已阻止手动切换。`);
+
+    let entry = meta.entries[initialIndex];
+    if (reason === "manual") {
+      this.emitLog("info", `手动切换前正在校验账号池条目额度: ${entry.email || entry.accountId}`);
+      meta.entries[initialIndex] = await this.refreshUsageForMeta(meta.entries[initialIndex], codexHome);
+      entry = meta.entries[initialIndex];
+      await this.writeMeta(meta);
+
+      if (entry.status === "exhausted") {
+        throw new Error(`账号 ${entry.email || entry.accountId} 当前额度已用尽，已阻止手动切换。`);
+      }
+      if (entry.status === "authInvalid") {
+        throw new Error(`账号 ${entry.email || entry.accountId} 鉴权已失效，已阻止手动切换。`);
+      }
+      if (entry.status === "incomplete" || entry.status === "neverChecked") {
+        throw new Error(`账号 ${entry.email || entry.accountId} 当前额度状态不完整，已阻止手动切换。请先单独刷新并确认额度。`);
+      }
     }
 
     await this.writePatchedAuthJson(poolRunner.path, secret);

@@ -1,12 +1,12 @@
 # Codex Migration Extension Handoff
 
-最后更新：2026-03-09（v1.0.0 发布整理）
+最后更新：2026-03-09（v1.0.1 修复 token pool 切换与 Windows 拉起问题）
 
 ## 项目快照
 
 - 项目名：`codex-migration-extension`
 - 展示名：`Codex 迁移助手`
-- 当前版本：`1.0.0`
+- 当前版本：`1.0.1`
 - 形态：VS Code / Codex Webview 扩展
 - 技术栈：TypeScript、React、VS Code Webview、Node.js 20+
 - 目标：面向 Codex 用户的账号切换、数据迁移、备份恢复、会话清理与用量查看
@@ -236,6 +236,105 @@ token pool 已经不再按“直接改当前活动槽位 auth”理解，而是�
 
 - `npm run typecheck` 通过
 - `npm run build` 通过
+
+### 7. 修复 `SWITCH_TO_POOL_RUNNER` 在 Windows 首次切换时卡住
+
+用户在 Windows 端首次点击“创建并切换到 pool-runner”时，流程会先同步记录，再进入真正的账号切换。
+
+此前若切换阶段抛出 `E_FILE_LOCKED`：
+
+- bridge 只会把 `ACTIVATE_PROFILE` 请求记录到 `pendingActivateAfterKill`
+- 但 `SWITCH_TO_POOL_RUNNER` 是在 bridge 内部封装调用 `runActivateProfileRequest(...)`
+- 导致杀掉占用进程后，没有任何挂起切换可以继续执行
+- UI 就会停在“准备切换账号”10%
+
+现已修复：
+
+- 当 `SWITCH_TO_POOL_RUNNER` 流程在切换阶段遇到 `E_FILE_LOCKED`
+- bridge 会显式构造一条挂起的 `ACTIVATE_PROFILE(pool-runner)`
+- 用户确认结束占用进程后，`KILL_PROCESSES` 分支会继续执行真正的切换
+
+相关文件：
+
+- `src/ui-host/bridge.ts`
+
+### 8. token pool 手动切换前必须先刷新并校验额度
+
+此前账号池条目刚导入后默认是 `neverChecked`，用户直接点“切换”会立即把 `auth.json` 改掉：
+
+- 不会先请求一次额度
+- 不会先把 5 小时 / 7 天结果刷出来
+- 也不会在切换前拦截 `exhausted` / `authInvalid` / `incomplete`
+
+现已改成：
+
+- 手动点击账号池“切换”时，先执行单条额度刷新
+- 刷新结果会写回列表
+- 然后再按状态决定是否允许切换
+
+当前拦截规则：
+
+- `exhausted`：禁止切换
+- `authInvalid`：禁止切换
+- `incomplete` / `neverChecked`：禁止切换，并要求先确认额度
+
+这样用户不会再出现“没刷额度就直接切过去，切完列表还是空”的问题。
+
+相关文件：
+
+- `src/engine/tokenPool.ts`
+
+### 9. token pool 操作列背景与 Windows 商店版启动匹配
+
+本轮还补了两处易感知问题：
+
+- 账号池当前高亮行右侧三点操作列，之前 sticky 列背景和内部容器宽度叠在一起，会出现一块更深的矩形背景
+- 现已改成：
+  - sticky 操作列默认透明
+  - 当前高亮行单独继承高亮背景
+  - 内部 `.account-actions-menu` 不再强制撑满整列
+
+- Windows 下自动重启 Codex 时，商店应用匹配原来太保守，只支持精确名字 / 前缀
+- 现已放宽到：
+  - 精确匹配
+  - 前缀匹配
+  - 包含匹配（`*Codex*`）
+
+若用户在 Windows 端仍遇到“已勾选自动重启但未拉起 Codex”，下一步需要让用户提供：
+
+```powershell
+Get-StartApps | Where-Object { $_.Name -like "*Codex*" } | Format-Table Name, AppID
+```
+
+相关文件：
+
+- `webview/src/styles.css`
+- `src/engine/processGuard.ts`
+
+## v1.0.1 本次发布修复点
+
+这次版本重点修的是 token pool / pool-runner 在真实使用中的几个阻塞问题：
+
+1. `pool-runner` 首次创建并切换时，如果遇到 `E_FILE_LOCKED`，此前会在杀掉占用进程后停在 10% 的“准备切换账号”阶段
+   - 现已修复为：杀进程后继续恢复执行挂起的 `pool-runner` 切换
+
+2. 账号池条目刚导入后，手动点击“切换”此前不会先请求额度
+   - 现已修复为：手动切换前先做单条额度刷新，再根据状态决定是否允许切换
+   - 现在会拦截：
+     - `exhausted`
+     - `authInvalid`
+     - `incomplete`
+     - `neverChecked`
+
+3. Windows 下勾选“切换后自动重启 Codex”时，如果当前没检测到运行中的 Codex 进程，之前不会主动拉起
+   - 现已修复为：无进程时也会直接尝试启动 Codex
+   - 同时放宽了 Microsoft Store / StartApps 名称匹配
+
+4. 账号池当前高亮行右侧三点操作列背景异常
+   - 现已修复 sticky 操作列背景叠加，当前行高亮和三点菜单样式保持一致
+
+5. token pool Webview 刷新过重导致 CPU 占用偏高、点击卡顿
+   - 现已通过 bridge 快照合并和稳定定时器降低重复刷新
 
 ## 关键文件
 

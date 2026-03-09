@@ -707,10 +707,14 @@ td {
   position: sticky;
   right: 0;
   z-index: 2;
-  background: inherit;
+  background: transparent;
   box-shadow: none;
   display: flex;
   justify-content: center;
+}
+
+.token-pool-row.current .token-pool-actions-col {
+  background: color-mix(in srgb, var(--accent-2) 16%, transparent);
 }
 
 .token-pool-table-head .token-pool-actions-col {
@@ -722,7 +726,7 @@ td {
 }
 
 .token-pool-row .account-actions-menu {
-  width: 100%;
+  width: auto;
   justify-content: center;
 }
 

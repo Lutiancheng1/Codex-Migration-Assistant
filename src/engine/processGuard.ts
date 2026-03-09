@@ -335,7 +335,7 @@ async function tryStartWindowsStoreApp(appName: string): Promise<boolean> {
   const escaped = appName.replace(/'/g, "''");
   const script = [
     "$ErrorActionPreference = 'Stop';",
-    `$app = Get-StartApps | Where-Object { $_.Name -eq '${escaped}' -or $_.Name -like '${escaped}*' } | Select-Object -First 1;`,
+    `$app = Get-StartApps | Where-Object { $_.Name -eq '${escaped}' -or $_.Name -like '${escaped}*' -or $_.Name -like '*${escaped}*' } | Select-Object -First 1;`,
     "if (-not $app) { throw 'APP_NOT_FOUND' }",
     'Start-Process explorer.exe -ArgumentList ("shell:AppsFolder\\" + $app.AppID)'
   ].join(" ");
