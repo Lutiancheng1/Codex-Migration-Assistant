@@ -489,13 +489,51 @@ td {
   border-collapse: separate;
   border-spacing: 0;
   width: max-content;
-  min-width: 840px;
+  min-width: 900px;
 }
 
 .accounts-table th,
 .accounts-table td {
   white-space: nowrap;
-  vertical-align: top;
+  vertical-align: middle;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.accounts-table tbody tr.current {
+  background: color-mix(in srgb, var(--accent-2) 16%, transparent);
+}
+
+.accounts-table tbody tr.dragging {
+  opacity: 0.55;
+}
+
+.accounts-table tbody tr.drag-over {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+.accounts-order-col {
+  width: 44px;
+  min-width: 44px;
+  max-width: 44px;
+  padding-left: 10px;
+  padding-right: 6px;
+}
+
+.drag-handle-button {
+  min-width: 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 14px;
+  letter-spacing: -1px;
+  line-height: 1;
+  cursor: grab;
+  color: var(--muted);
+}
+
+.drag-handle-button:active {
+  cursor: grabbing;
 }
 
 .accounts-actions-col {
@@ -618,149 +656,64 @@ td {
   font-size: 12px;
 }
 
-.token-pool-table-wrap {
-  width: 100%;
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  position: relative;
+.token-pool-table {
+  min-width: 760px;
 }
 
-.token-pool-table-head,
-.token-pool-row {
-  display: grid;
-  grid-template-columns: minmax(220px, 2.2fr) 72px 72px 72px 100px 138px 56px;
-  gap: 10px;
-  align-items: center;
-  width: max-content;
-  min-width: 790px;
+.token-pool-table tbody tr {
+  height: 52px;
+  content-visibility: auto;
+  contain-intrinsic-size: 52px;
 }
 
-.token-pool-table-head {
+.token-pool-table th {
   font-size: 12px;
   color: var(--muted);
-  padding: 0 10px 6px;
 }
 
-.token-pool-table-head-sticky {
-  position: sticky;
-  top: 0;
-  z-index: 4;
-  background: color-mix(in srgb, var(--card) 98%, transparent);
+.token-pool-table .token-pool-account-col {
+  min-width: 220px;
+  max-width: 320px;
 }
 
-.token-pool-viewport {
-  position: relative;
-  overflow: auto;
-  background: color-mix(in srgb, var(--vscode-editor-background) 94%, transparent);
-  scrollbar-gutter: stable both-edges;
-}
-
-.token-pool-spacer {
-  position: relative;
-  min-height: 100%;
-  min-width: 790px;
-}
-
-.token-pool-row {
-  position: absolute;
-  left: 0;
-  width: max-content;
-  min-width: 790px;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--line);
-}
-
-.token-pool-row.current {
-  background: color-mix(in srgb, var(--accent-2) 16%, transparent);
-}
-
-.token-pool-account-cell {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-width: 0;
-}
-
-.token-pool-account-cell strong,
-.token-pool-account-cell small {
+.token-pool-table .token-pool-account-col strong {
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.token-pool-account-cell em {
-  color: var(--accent);
-  font-style: normal;
-  font-size: 12px;
-  margin-top: 2px;
+.token-pool-table .accounts-actions-col {
+  text-align: right;
 }
 
-.token-pool-actions-col {
-  min-width: 52px;
-  width: 52px;
+.token-pool-table .account-actions-menu {
+  justify-content: flex-end;
+}
+
+.token-pool-empty-row {
   text-align: center;
-}
-
-.token-pool-row .token-pool-actions-col {
-  position: sticky;
-  right: 0;
-  z-index: 2;
-  background: transparent;
-  box-shadow: none;
-  display: flex;
-  justify-content: center;
-}
-
-.token-pool-row.current .token-pool-actions-col {
-  background: color-mix(in srgb, var(--accent-2) 16%, transparent);
-}
-
-.token-pool-table-head .token-pool-actions-col {
-  position: sticky;
-  right: 0;
-  z-index: 3;
-  background: color-mix(in srgb, var(--card) 98%, transparent);
-  box-shadow: none;
-}
-
-.token-pool-row .account-actions-menu {
-  width: auto;
-  justify-content: center;
-}
-
-.token-pool-empty {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   color: var(--muted);
 }
 
 .accounts-table-wrap,
-.token-pool-viewport {
+.token-pool-table-wrap {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--fg) 28%, transparent) transparent;
 }
 
 .accounts-table-wrap::-webkit-scrollbar,
-.token-pool-viewport::-webkit-scrollbar {
+.token-pool-table-wrap::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 .accounts-table-wrap::-webkit-scrollbar-track,
-.token-pool-viewport::-webkit-scrollbar-track {
+.token-pool-table-wrap::-webkit-scrollbar-track {
   background: transparent;
 }
 
 .accounts-table-wrap::-webkit-scrollbar-thumb,
-.token-pool-viewport::-webkit-scrollbar-thumb {
+.token-pool-table-wrap::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--fg) 24%, transparent);
   border-radius: 999px;
   border: 2px solid transparent;
@@ -768,7 +721,7 @@ td {
 }
 
 .accounts-table-wrap::-webkit-scrollbar-thumb:hover,
-.token-pool-viewport::-webkit-scrollbar-thumb:hover {
+.token-pool-table-wrap::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--fg) 36%, transparent);
   background-clip: padding-box;
 }

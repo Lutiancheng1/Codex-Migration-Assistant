@@ -10,6 +10,7 @@ import {
   createProfile,
   deleteProfile,
   getProfilesSnapshot,
+  reorderProfiles,
   refreshProfilesUsage,
   syncCurrentCoreToProfile,
   POOL_RUNNER_PROFILE_ID,
@@ -511,6 +512,22 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
         return;
       }
 
+      if (msg.type === "IMPORT_PROFILE_TO_TOKEN_POOL") {
+        const codexHome = resolveCodexHome(msg.payload.codexHome);
+        rememberCodexHome(codexHome);
+        const snapshot = await getProfilesSnapshot(codexHome);
+        const profile = snapshot.profiles.find((item) => item.id === msg.payload.profileId && item.exists);
+        if (!profile) {
+          throw new Error(`未找到可导入的账号槽位: ${msg.payload.profileId}`);
+        }
+        if (!profile.hasAuth) {
+          throw new Error(`账号槽位 ${profile.name} 未检测到 auth.json，无法导入到账号池。`);
+        }
+        await tokenPoolService.importProfileAuth(profile.path);
+        emitTaskLog(target.webview, "info", `已将账号槽位 ${profile.name} 的登录态导入到账号池。`);
+        return;
+      }
+
       if (msg.type === "SYNC_CURRENT_TO_POOL_RUNNER") {
         const codexHome = resolveCodexHome(msg.payload?.codexHome);
         rememberCodexHome(codexHome);
@@ -562,6 +579,11 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
         return;
       }
 
+      if (msg.type === "REORDER_TOKEN_POOL_ENTRIES") {
+        await tokenPoolService.reorderEntries(msg.payload.orderedIds);
+        return;
+      }
+
       if (msg.type === "SET_TOKEN_POOL_SETTINGS") {
         await tokenPoolService.setSettings(msg.payload);
         return;
@@ -593,6 +615,14 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
         const codexHome = resolveCodexHome(msg.payload.codexHome);
         rememberCodexHome(codexHome);
         const snapshot = await deleteProfile(codexHome, msg.payload.profileId);
+        await emitSnapshot(target.webview, snapshot);
+        return;
+      }
+
+      if (msg.type === "REORDER_PROFILES") {
+        const codexHome = resolveCodexHome(msg.payload.codexHome);
+        rememberCodexHome(codexHome);
+        const snapshot = await reorderProfiles(codexHome, msg.payload.orderedIds);
         await emitSnapshot(target.webview, snapshot);
         return;
       }

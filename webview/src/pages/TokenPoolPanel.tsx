@@ -1,11 +1,6 @@
 import { createPortal } from "react-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ProfileSummary, TokenPoolEntry, TokenPoolSnapshot } from "../api/types";
-
-const ROW_HEIGHT = 52;
-const VIEWPORT_MAX_HEIGHT = 360;
-const OVERSCAN = 6;
-const TABLE_HEAD_HEIGHT = 36;
 
 type Props = {
   codexHome: string;
@@ -22,6 +17,7 @@ type Props = {
   onActivateEntry(entryId: string): void;
   onDeleteEntry(entryId: string): void;
   onMoveEntry(entryId: string, direction: "up" | "down"): void;
+  onReorderEntries(entryIds: string[]): void;
   onUpdateSettings(next: { autoSwitchEnabled?: boolean; pollIntervalMs?: number; autoRelaunchAfterSwitch?: boolean }): void;
 };
 
@@ -56,29 +52,18 @@ function statusLabel(entry: TokenPoolEntry): string {
 }
 
 function isManualSwitchBlocked(entry: TokenPoolEntry): boolean {
-  return entry.status === "exhausted";
+  return entry.status === "exhausted" || entry.status === "authInvalid" || entry.status === "incomplete" || entry.status === "neverChecked";
 }
 
 export function TokenPoolPanel(props: Props): JSX.Element {
-  const [scrollTop, setScrollTop] = useState(0);
   const [openActionEntryId, setOpenActionEntryId] = useState<string>();
   const [actionAnchorRect, setActionAnchorRect] = useState<DOMRect | undefined>();
   const [pendingDeleteEntryId, setPendingDeleteEntryId] = useState<string>();
+  const [draggingEntryId, setDraggingEntryId] = useState<string>();
+  const [dragOverEntryId, setDragOverEntryId] = useState<string>();
   const entries = props.tokenPool.entries;
   const isPoolRunnerActive = props.activeProfileId === props.poolRunnerProfile?.id;
   const canSyncCurrentToPoolRunner = !isPoolRunnerActive && !!props.activeProfileId;
-  const viewportHeight = useMemo(() => {
-    if (entries.length === 0) {
-      return 120;
-    }
-    return Math.min(VIEWPORT_MAX_HEIGHT, Math.max(ROW_HEIGHT + 1, entries.length * ROW_HEIGHT + 1));
-  }, [entries.length]);
-  const totalHeight = entries.length * ROW_HEIGHT;
-  const contentScrollTop = Math.max(0, scrollTop - TABLE_HEAD_HEIGHT);
-  const visibleCount = Math.ceil(Math.max(ROW_HEIGHT, viewportHeight - TABLE_HEAD_HEIGHT) / ROW_HEIGHT) + OVERSCAN * 2;
-  const startIndex = Math.max(0, Math.floor(contentScrollTop / ROW_HEIGHT) - OVERSCAN);
-  const endIndex = Math.min(entries.length, startIndex + visibleCount);
-  const visibleEntries = useMemo(() => entries.slice(startIndex, endIndex), [entries, startIndex, endIndex]);
 
   useEffect(() => {
     if (!openActionEntryId) {
@@ -189,41 +174,97 @@ export function TokenPoolPanel(props: Props): JSX.Element {
         <span>池内账号数：{entries.length}</span>
       </div>
 
-      <div className="token-pool-table-wrap">
-        <div
-          className="token-pool-viewport"
-          style={{ height: viewportHeight }}
-          onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
-        >
-          <div className="token-pool-table-head token-pool-table-head-sticky">
-            <span>账号</span>
-            <span>套餐</span>
-            <span>5小时</span>
-            <span>7天</span>
-            <span>状态</span>
-            <span>最近刷新</span>
-            <span className="token-pool-actions-col">操作</span>
-          </div>
-          <div className="token-pool-spacer" style={{ height: totalHeight }}>
-            {visibleEntries.map((entry, offset) => {
-              const index = startIndex + offset;
-              const top = index * ROW_HEIGHT;
+      <div className="accounts-table-wrap token-pool-table-wrap">
+        <table className="accounts-table token-pool-table">
+          <thead>
+            <tr>
+              <th className="accounts-order-col" aria-label="排序"></th>
+              <th>账号</th>
+              <th>套餐</th>
+              <th>5小时</th>
+              <th>7天</th>
+              <th>状态</th>
+              <th>最近刷新</th>
+              <th className="accounts-actions-col">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.length === 0 ? (
+              <tr>
+                <td className="token-pool-empty-row" colSpan={8}>暂未导入 token JSON。</td>
+              </tr>
+            ) : null}
+
+            {entries.map((entry, index) => {
               const isActionOpen = openActionEntryId === entry.id;
               const confirmDelete = pendingDeleteEntryId === entry.id;
               const isSwitchBlocked = isManualSwitchBlocked(entry);
+              const isDragOver = dragOverEntryId === entry.id && draggingEntryId !== entry.id;
               return (
-                <div className={`token-pool-row ${entry.current ? "current" : ""}`} key={entry.id} style={{ top, height: ROW_HEIGHT }}>
-                  <span className="token-pool-account-cell">
+                <tr
+                  key={entry.id}
+                  className={`${entry.current ? "current" : ""} ${draggingEntryId === entry.id ? "dragging" : ""} ${isDragOver ? "drag-over" : ""}`.trim()}
+                  onDragOver={(event) => {
+                    if (!draggingEntryId || draggingEntryId === entry.id) {
+                      return;
+                    }
+                    event.preventDefault();
+                    if (dragOverEntryId !== entry.id) {
+                      setDragOverEntryId(entry.id);
+                    }
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    if (!draggingEntryId || draggingEntryId === entry.id) {
+                      setDraggingEntryId(undefined);
+                      setDragOverEntryId(undefined);
+                      return;
+                    }
+                    const orderedIds = entries.map((item) => item.id);
+                    const fromIndex = orderedIds.indexOf(draggingEntryId);
+                    const toIndex = orderedIds.indexOf(entry.id);
+                    if (fromIndex >= 0 && toIndex >= 0 && fromIndex != toIndex) {
+                      const nextIds = [...orderedIds];
+                      const [moved] = nextIds.splice(fromIndex, 1);
+                      nextIds.splice(toIndex, 0, moved);
+                      props.onReorderEntries(nextIds);
+                    }
+                    setDraggingEntryId(undefined);
+                    setDragOverEntryId(undefined);
+                  }}
+                >
+                  <td className="accounts-order-col">
+                    <button
+                      type="button"
+                      className="drag-handle-button"
+                      draggable
+                      onDragStart={(event) => {
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData("text/plain", entry.id);
+                        setDraggingEntryId(entry.id);
+                        setDragOverEntryId(entry.id);
+                      }}
+                      onDragEnd={() => {
+                        setDraggingEntryId(undefined);
+                        setDragOverEntryId(undefined);
+                      }}
+                      aria-label={`拖拽排序 ${entry.email || entry.accountId}`}
+                      title="拖拽排序"
+                    >
+                      ⋮⋮
+                    </button>
+                  </td>
+                  <td className="token-pool-account-col">
                     <strong title={`${entry.email || entry.accountId}${entry.expired ? `\n过期时间: ${formatTime(entry.expired)}` : ""}`}>
                       {entry.email || entry.accountId}
                     </strong>
-                  </span>
-                  <span>{entry.usage?.planType || entry.planTypeHint || "-"}</span>
-                  <span>{formatPercent(entry.usage?.fiveHour?.remainingPercent)}</span>
-                  <span>{formatPercent(entry.usage?.oneWeek?.remainingPercent)}</span>
-                  <span>{statusLabel(entry)}</span>
-                  <span>{entry.usage ? formatTime(entry.usage.fetchedAt) : "-"}</span>
-                  <span className="token-pool-actions-col">
+                  </td>
+                  <td>{entry.usage?.planType || entry.planTypeHint || "-"}</td>
+                  <td>{formatPercent(entry.usage?.fiveHour?.remainingPercent)}</td>
+                  <td>{formatPercent(entry.usage?.oneWeek?.remainingPercent)}</td>
+                  <td>{statusLabel(entry)}</td>
+                  <td>{entry.usage ? formatTime(entry.usage.fetchedAt) : "-"}</td>
+                  <td className="accounts-actions-col">
                     <div className="account-actions-menu" data-token-pool-menu-id={entry.id}>
                       <button
                         className="action-trigger"
@@ -273,13 +314,13 @@ export function TokenPoolPanel(props: Props): JSX.Element {
                                 disabled={entry.current || !isPoolRunnerActive || isSwitchBlocked}
                                 title={
                                   isSwitchBlocked
-                                    ? "该账号当前额度已用尽，已禁止手动切换。"
+                                    ? "该账号当前额度不可切换，请先刷新并确认状态。"
                                     : !isPoolRunnerActive
                                       ? "请先切换到 pool-runner。"
                                       : undefined
                                 }
                               >
-                                {entry.current ? "当前" : isSwitchBlocked ? "已用尽" : "切换"}
+                                {entry.current ? "当前" : isSwitchBlocked ? "不可切换" : "切换"}
                               </button>
                               <button
                                 onClick={() => {
@@ -321,13 +362,12 @@ export function TokenPoolPanel(props: Props): JSX.Element {
                           )
                         : null}
                     </div>
-                  </span>
-                </div>
+                  </td>
+                </tr>
               );
             })}
-            {entries.length === 0 ? <div className="token-pool-empty">暂未导入 token JSON。</div> : null}
-          </div>
-        </div>
+          </tbody>
+        </table>
       </div>
 
       <p className="token-pool-help">说明：账号池不支持全量查额度。自动检测只检查当前激活账号，其它账号只支持单条手动刷新。</p>

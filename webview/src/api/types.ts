@@ -27,6 +27,7 @@ export type ProfileSummary = {
   id: string;
   name: string;
   path: string;
+  order: number;
   createdAt: string;
   updatedAt: string;
   lastActivatedAt?: string;
@@ -77,14 +78,17 @@ export type RequestMessage =
   | { type: "PICK_DEFAULT_BACKUP"; payload?: { directory?: string } }
   | { type: "OPEN_IN_OS"; payload: { path: string } }
   | { type: "CREATE_PROFILE"; payload: { codexHome?: string; name: string } }
+  | { type: "REORDER_PROFILES"; payload: { codexHome?: string; orderedIds: string[] } }
   | { type: "IMPORT_TOKEN_POOL_FILES"; payload: { mode: "single" | "multiple" } }
   | { type: "IMPORT_TOKEN_POOL_DIRECTORY" }
+  | { type: "IMPORT_PROFILE_TO_TOKEN_POOL"; payload: { codexHome?: string; profileId: string } }
   | { type: "SYNC_CURRENT_TO_POOL_RUNNER"; payload?: { codexHome?: string } }
   | { type: "SWITCH_TO_POOL_RUNNER"; payload?: { codexHome?: string; backupCurrent?: boolean } }
   | { type: "REFRESH_TOKEN_POOL_ENTRY_USAGE"; payload: { codexHome?: string; entryId: string } }
   | { type: "ACTIVATE_TOKEN_POOL_ENTRY"; payload: { codexHome?: string; entryId: string } }
   | { type: "DELETE_TOKEN_POOL_ENTRY"; payload: { entryId: string } }
   | { type: "MOVE_TOKEN_POOL_ENTRY"; payload: { entryId: string; direction: "up" | "down" } }
+  | { type: "REORDER_TOKEN_POOL_ENTRIES"; payload: { orderedIds: string[] } }
   | {
     type: "SET_TOKEN_POOL_SETTINGS";
     payload: { autoSwitchEnabled?: boolean; pollIntervalMs?: number; autoRelaunchAfterSwitch?: boolean };

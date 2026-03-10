@@ -29,6 +29,7 @@ export type ProfileSummary = {
   id: string;
   name: string;
   path: string;
+  order: number;
   createdAt: string;
   updatedAt: string;
   lastActivatedAt?: string;
@@ -89,8 +90,13 @@ export type ActivateProfileRequest = {
   };
 };
 export type DeleteProfileRequest = { type: "DELETE_PROFILE"; payload: { codexHome?: string; profileId: string } };
+export type ReorderProfilesRequest = { type: "REORDER_PROFILES"; payload: { codexHome?: string; orderedIds: string[] } };
 export type ImportTokenPoolFilesRequest = { type: "IMPORT_TOKEN_POOL_FILES"; payload: { mode: "single" | "multiple" } };
 export type ImportTokenPoolDirectoryRequest = { type: "IMPORT_TOKEN_POOL_DIRECTORY" };
+export type ImportProfileToTokenPoolRequest = {
+  type: "IMPORT_PROFILE_TO_TOKEN_POOL";
+  payload: { codexHome?: string; profileId: string };
+};
 export type SyncCurrentToPoolRunnerRequest = {
   type: "SYNC_CURRENT_TO_POOL_RUNNER";
   payload?: { codexHome?: string };
@@ -114,6 +120,10 @@ export type DeleteTokenPoolEntryRequest = {
 export type MoveTokenPoolEntryRequest = {
   type: "MOVE_TOKEN_POOL_ENTRY";
   payload: { entryId: string; direction: "up" | "down" };
+};
+export type ReorderTokenPoolEntriesRequest = {
+  type: "REORDER_TOKEN_POOL_ENTRIES";
+  payload: { orderedIds: string[] };
 };
 export type SetTokenPoolSettingsRequest = {
   type: "SET_TOKEN_POOL_SETTINGS";
@@ -203,14 +213,17 @@ export type RequestMessage =
   | CreateProfileRequest
   | ActivateProfileRequest
   | DeleteProfileRequest
+  | ReorderProfilesRequest
   | ImportTokenPoolFilesRequest
   | ImportTokenPoolDirectoryRequest
+  | ImportProfileToTokenPoolRequest
   | SyncCurrentToPoolRunnerRequest
   | SwitchToPoolRunnerRequest
   | RefreshTokenPoolEntryUsageRequest
   | ActivateTokenPoolEntryRequest
   | DeleteTokenPoolEntryRequest
   | MoveTokenPoolEntryRequest
+  | ReorderTokenPoolEntriesRequest
   | SetTokenPoolSettingsRequest
   | StartExportRequest
   | StartPreviewImportRequest

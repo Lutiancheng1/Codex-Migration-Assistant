@@ -34,12 +34,14 @@ type Props = {
   onImportTokenPoolSingle(): void;
   onImportTokenPoolMultiple(): void;
   onImportTokenPoolDirectory(): void;
+  onImportProfileToTokenPool(profileId: string): void;
   onSyncCurrentToPoolRunner(): void;
   onSwitchToPoolRunner(): void;
   onRefreshTokenPoolEntry(entryId: string): void;
   onActivateTokenPoolEntry(entryId: string): void;
   onDeleteTokenPoolEntry(entryId: string): void;
   onMoveTokenPoolEntry(entryId: string, direction: "up" | "down"): void;
+  onReorderTokenPoolEntries(entryIds: string[]): void;
   onUpdateTokenPoolSettings(next: { autoSwitchEnabled?: boolean; pollIntervalMs?: number; autoRelaunchAfterSwitch?: boolean }): void;
   onExportProfile(profileId: string): void;
   onCreate(): void;
@@ -47,6 +49,7 @@ type Props = {
   onActivateAndMerge(profileId: string): void;
   onActivateAndOverwrite(profileId: string): void;
   onDelete(profileId: string): void;
+  onReorderProfiles(orderedIds: string[]): void;
   onPreviewThreadCleanup(): void;
   onStartThreadCleanup(applyMode: ThreadCleanupApplyMode): void;
 };
@@ -88,12 +91,15 @@ function computeCleanupSummary(preview?: ThreadCleanupPreviewResult): {
 export function AccountsManager(props: Props): JSX.Element {
   const activeProfile = props.profiles.find((item) => item.id === props.activeProfileId);
   const poolRunnerProfile = props.profiles.find((item) => item.id === POOL_RUNNER_PROFILE_ID);
+  const sortableProfileIds = useMemo(() => props.profiles.filter((item) => item.id !== "live").map((item) => item.id), [props.profiles]);
   const canCreate = props.newProfileName.trim().length > 0;
   const [pendingDeleteProfileId, setPendingDeleteProfileId] = useState<string>();
   const [pendingMergeProfileId, setPendingMergeProfileId] = useState<string>();
   const [pendingOverwriteProfileId, setPendingOverwriteProfileId] = useState<string>();
   const [openActionProfileId, setOpenActionProfileId] = useState<string>();
   const [actionAnchorRect, setActionAnchorRect] = useState<DOMRect | undefined>();
+  const [draggingProfileId, setDraggingProfileId] = useState<string>();
+  const [dragOverProfileId, setDragOverProfileId] = useState<string>();
   const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(5 * 60 * 1000);
   const [pendingCleanupMode, setPendingCleanupMode] = useState<ThreadCleanupApplyMode>();
   const [isTokenPoolExpanded, setIsTokenPoolExpanded] = useState<boolean>(true);
@@ -225,6 +231,7 @@ export function AccountsManager(props: Props): JSX.Element {
             onActivateEntry={props.onActivateTokenPoolEntry}
             onDeleteEntry={props.onDeleteTokenPoolEntry}
             onMoveEntry={props.onMoveTokenPoolEntry}
+            onReorderEntries={props.onReorderTokenPoolEntries}
             onUpdateSettings={props.onUpdateTokenPoolSettings}
           />
         ) : null}
@@ -309,6 +316,7 @@ export function AccountsManager(props: Props): JSX.Element {
         <table className="accounts-table">
           <thead>
             <tr>
+              <th className="accounts-order-col" aria-label="排序"></th>
               <th>名称</th>
               <th>标识</th>
               <th>登录态</th>
@@ -328,8 +336,67 @@ export function AccountsManager(props: Props): JSX.Element {
               const confirmMerge = pendingMergeProfileId === profile.id;
               const confirmOverwrite = pendingOverwriteProfileId === profile.id;
               const isActionOpen = openActionProfileId === profile.id;
+              const canDrag = profile.id !== "live";
+              const isDragOver = dragOverProfileId === profile.id && draggingProfileId !== profile.id;
               return (
-                <tr key={profile.id}>
+                <tr
+                  key={profile.id}
+                  className={`${isActive ? "current" : ""} ${draggingProfileId === profile.id ? "dragging" : ""} ${isDragOver ? "drag-over" : ""}`.trim()}
+                  onDragOver={(event) => {
+                    if (!canDrag || !draggingProfileId || draggingProfileId === profile.id) {
+                      return;
+                    }
+                    event.preventDefault();
+                    if (dragOverProfileId !== profile.id) {
+                      setDragOverProfileId(profile.id);
+                    }
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    if (!canDrag || !draggingProfileId || draggingProfileId === profile.id) {
+                      setDraggingProfileId(undefined);
+                      setDragOverProfileId(undefined);
+                      return;
+                    }
+                    const orderedIds = sortableProfileIds;
+                    const fromIndex = orderedIds.indexOf(draggingProfileId);
+                    const toIndex = orderedIds.indexOf(profile.id);
+                    if (fromIndex >= 0 && toIndex >= 0 && fromIndex !== toIndex) {
+                      const nextIds = [...orderedIds];
+                      const [moved] = nextIds.splice(fromIndex, 1);
+                      nextIds.splice(toIndex, 0, moved);
+                      props.onReorderProfiles(nextIds);
+                    }
+                    setDraggingProfileId(undefined);
+                    setDragOverProfileId(undefined);
+                  }}
+                >
+                  <td className="accounts-order-col">
+                    <button
+                      type="button"
+                      className="drag-handle-button"
+                      draggable={canDrag}
+                      onDragStart={(event) => {
+                        if (!canDrag) {
+                          event.preventDefault();
+                          return;
+                        }
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData("text/plain", profile.id);
+                        setDraggingProfileId(profile.id);
+                        setDragOverProfileId(profile.id);
+                      }}
+                      onDragEnd={() => {
+                        setDraggingProfileId(undefined);
+                        setDragOverProfileId(undefined);
+                      }}
+                      aria-label={canDrag ? `拖拽排序 ${profile.name}` : `${profile.name} 不支持拖拽排序`}
+                      title={canDrag ? "拖拽排序" : "该行不支持拖拽排序"}
+                      disabled={!canDrag}
+                    >
+                      ⋮⋮
+                    </button>
+                  </td>
                   <td>{profile.name}</td>
                   <td>{profile.id}</td>
                   <td>{profile.hasAuth ? "已检测" : "未检测"}</td>
@@ -392,6 +459,16 @@ export function AccountsManager(props: Props): JSX.Element {
                                 disabled={!profile.exists}
                               >
                                 单独导出
+                              </button>
+                              <button
+                                onClick={() => {
+                                  props.onImportProfileToTokenPool(profile.id);
+                                  setOpenActionProfileId(undefined);
+                                }}
+                                disabled={!profile.exists || !profile.hasAuth}
+                                title={!profile.hasAuth ? "该账号未检测到 auth.json" : undefined}
+                              >
+                                导入到账号池
                               </button>
                               <button
                                 onClick={() => {

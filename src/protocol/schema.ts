@@ -66,6 +66,13 @@ export const requestSchema = z.discriminatedUnion("type", [
     })
   }),
   z.object({
+    type: z.literal("REORDER_PROFILES"),
+    payload: z.object({
+      codexHome: z.string().optional(),
+      orderedIds: z.array(z.string().min(1)).min(1)
+    })
+  }),
+  z.object({
     type: z.literal("IMPORT_TOKEN_POOL_FILES"),
     payload: z.object({
       mode: z.enum(["single", "multiple"])
@@ -73,6 +80,13 @@ export const requestSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("IMPORT_TOKEN_POOL_DIRECTORY")
+  }),
+  z.object({
+    type: z.literal("IMPORT_PROFILE_TO_TOKEN_POOL"),
+    payload: z.object({
+      codexHome: z.string().optional(),
+      profileId: z.string().min(1)
+    })
   }),
   z.object({
     type: z.literal("SYNC_CURRENT_TO_POOL_RUNNER"),
@@ -116,6 +130,12 @@ export const requestSchema = z.discriminatedUnion("type", [
     payload: z.object({
       entryId: z.string().min(1),
       direction: z.enum(["up", "down"])
+    })
+  }),
+  z.object({
+    type: z.literal("REORDER_TOKEN_POOL_ENTRIES"),
+    payload: z.object({
+      orderedIds: z.array(z.string().min(1)).min(1)
     })
   }),
   z.object({

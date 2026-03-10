@@ -19,6 +19,7 @@ import {
   type ProfileUsageSummary
 } from "./usage";
 import { resolveCodexHome } from "../util/path";
+import { resolveProfileAuthLabel } from "./authLabel";
 import { getLogger } from "../util/logger";
 import { detectExternalBusyProcesses, forceKillProcesses, relaunchKilledProcesses } from "./processGuard";
 
@@ -399,6 +400,31 @@ class TokenPoolService implements vscode.Disposable {
     return this.readMeta().entries.some((entry) => entry.id === entryId);
   }
 
+  private async upsertSecret(meta: TokenPoolMetadata, secret: TokenPoolSecret, overrides?: Partial<Pick<TokenPoolEntryMeta, "email" | "type" | "planTypeHint">>): Promise<"imported" | "replaced"> {
+    const duplicateIndex = meta.entries.findIndex((entry) => entry.accountId === secret.accountId || (!!secret.email && entry.email === secret.email));
+    const nextMeta: TokenPoolEntryMeta = {
+      id: duplicateIndex >= 0 ? meta.entries[duplicateIndex].id : `${secret.accountId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      email: overrides?.email ?? secret.email,
+      accountId: secret.accountId,
+      type: overrides?.type ?? secret.type,
+      expired: secret.expired,
+      lastRefresh: secret.lastRefresh,
+      importedAt: duplicateIndex >= 0 ? meta.entries[duplicateIndex].importedAt : nowIso(),
+      updatedAt: nowIso(),
+      planTypeHint: overrides?.planTypeHint ?? secret.planTypeHint,
+      usage: duplicateIndex >= 0 ? meta.entries[duplicateIndex].usage : undefined,
+      usageError: duplicateIndex >= 0 ? meta.entries[duplicateIndex].usageError : undefined,
+      status: duplicateIndex >= 0 ? meta.entries[duplicateIndex].status : "neverChecked"
+    };
+    await this.writeSecret(nextMeta.id, secret);
+    if (duplicateIndex >= 0) {
+      meta.entries.splice(duplicateIndex, 1, nextMeta);
+      return "replaced";
+    }
+    meta.entries.push(nextMeta);
+    return "imported";
+  }
+
   async importFiles(filePaths: string[]): Promise<TokenPoolSnapshot> {
     const meta = this.readMeta();
     const summary: ImportSummary = { imported: 0, replaced: 0, skipped: 0 };
@@ -406,29 +432,8 @@ class TokenPoolService implements vscode.Disposable {
     for (const filePath of filePaths) {
       try {
         const parsed = normalizeImportedToken(await readJsonFile(filePath));
-        const duplicateIndex = meta.entries.findIndex((entry) => entry.accountId === parsed.accountId || (!!parsed.email && entry.email === parsed.email));
-        const nextMeta: TokenPoolEntryMeta = {
-          id: duplicateIndex >= 0 ? meta.entries[duplicateIndex].id : `${parsed.accountId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          email: parsed.email,
-          accountId: parsed.accountId,
-          type: parsed.type,
-          expired: parsed.expired,
-          lastRefresh: parsed.lastRefresh,
-          importedAt: duplicateIndex >= 0 ? meta.entries[duplicateIndex].importedAt : nowIso(),
-          updatedAt: nowIso(),
-          planTypeHint: parsed.planTypeHint,
-          usage: duplicateIndex >= 0 ? meta.entries[duplicateIndex].usage : undefined,
-          usageError: duplicateIndex >= 0 ? meta.entries[duplicateIndex].usageError : undefined,
-          status: duplicateIndex >= 0 ? meta.entries[duplicateIndex].status : "neverChecked"
-        };
-        await this.writeSecret(nextMeta.id, parsed);
-        if (duplicateIndex >= 0) {
-          meta.entries.splice(duplicateIndex, 1, nextMeta);
-          summary.replaced += 1;
-        } else {
-          meta.entries.push(nextMeta);
-          summary.imported += 1;
-        }
+        const result = await this.upsertSecret(meta, parsed);
+        summary[result] += 1;
       } catch {
         summary.skipped += 1;
       }
@@ -445,6 +450,25 @@ class TokenPoolService implements vscode.Disposable {
       .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".json"))
       .map((entry) => path.join(directoryPath, entry.name));
     return this.importFiles(files);
+  }
+
+
+  async importProfileAuth(profilePath: string): Promise<TokenPoolSnapshot> {
+    const authPath = path.join(profilePath, "auth.json");
+    const st = await statSafe(authPath);
+    if (!st?.isFile()) {
+      throw new Error("目标账号未检测到 auth.json，无法导入到账号池。");
+    }
+
+    const raw = JSON.parse(await fs.readFile(authPath, "utf8")) as ImportableJson;
+    const parsed = normalizeImportedToken(raw);
+    parsed.email = parsed.email ?? (await resolveProfileAuthLabel(profilePath)) ?? parsed.email;
+
+    const meta = this.readMeta();
+    const result = await this.upsertSecret(meta, parsed);
+    await this.writeMeta(meta);
+    this.emitLog("info", `已将 ${parsed.email || parsed.accountId} 的登录态导入到账号池（${result === "replaced" ? "覆盖旧条目" : "新增条目"}）。`);
+    return this.getSnapshot();
   }
 
   private async refreshUsageForMeta(meta: TokenPoolEntryMeta, codexHomeOverride?: string): Promise<TokenPoolEntryMeta> {
@@ -541,6 +565,18 @@ class TokenPoolService implements vscode.Disposable {
     }
     const [item] = meta.entries.splice(index, 1);
     meta.entries.splice(targetIndex, 0, item);
+    await this.writeMeta(meta);
+    return this.getSnapshot();
+  }
+
+  async reorderEntries(orderedIds: string[]): Promise<TokenPoolSnapshot> {
+    const meta = this.readMeta();
+    const current = new Map(meta.entries.map((entry) => [entry.id, entry]));
+    const seen = new Set<string>();
+    const normalized = orderedIds.filter((id) => current.has(id) && !seen.has(id) && seen.add(id));
+    const remainder = meta.entries.map((entry) => entry.id).filter((id) => !seen.has(id));
+    const finalIds = [...normalized, ...remainder];
+    meta.entries = finalIds.map((id) => current.get(id)).filter((entry): entry is TokenPoolEntryMeta => !!entry);
     await this.writeMeta(meta);
     return this.getSnapshot();
   }

@@ -1,6 +1,6 @@
 # Codex Migration Extension Handoff
 
-最后更新：2026-03-09（账号页改为账号池优先布局）
+最后更新：2026-03-10（修正拖拽排序语义与账号池大列表渲染）
 
 ## 项目快照
 
@@ -123,6 +123,53 @@ token pool 已经不再按“直接改当前活动槽位 auth”理解，而是�
   - 单条账号手动刷新额度
 
 ## 本轮新增修复（未提交）
+
+### 0. 账号管理与账号池支持拖拽排序
+
+本轮新增了两套列表的持久化拖拽排序：
+
+- 账号管理列表：
+  - profile 元数据新增 `order`
+  - 不再按名称排序作为最终顺序
+  - 首次迁移到新模型时，旧数据按当时页面可见的名称排序初始化 `order`
+  - 新增协议：`REORDER_PROFILES`
+  - 新账号默认追加到末尾
+- 账号池列表：
+  - 新增协议：`REORDER_TOKEN_POOL_ENTRIES`
+  - 拖拽后直接按新顺序持久化
+  - 自动切换继续按池内当前顺序轮转
+  - 保留原有“上移 / 下移”菜单作为备选入口
+
+随后又补了两处关键修正，避免这套拖拽排序带来新的问题：
+
+- 账号管理拖拽现在**彻底剥离 `live` 行**
+  - `live` 行仍然展示，但不参与拖拽排序集合
+  - 前端拖拽目标和后端真实可持久化 profile 集合保持一致
+  - 避免出现“拖到 live 附近，落点和最终保存顺序不一致”的问题
+- 账号池列表恢复为**窗口化渲染**
+  - 不再全量 `entries.map(...)` 渲染整张表
+  - 当前改成固定行高的可见区窗口化，只渲染视口附近条目
+  - 仍保留 table 样式、横向滚动、sticky 操作列和拖拽排序
+  - 这是为了维持之前已经明确过的产品约束：几百 / 几千个池账号也不能因为全量渲染而明显卡顿
+
+UI 上也同步统一：
+
+- 两个列表都增加了拖拽把手列
+- 当前高亮账号 / 当前池条目仍保留高亮
+- 账号池已从虚拟列表改成普通 table 结构，以保证拖拽稳定、sticky 操作列与横向滚动行为一致
+
+相关文件：
+
+- `src/engine/profiles.ts`
+- `src/engine/tokenPool.ts`
+- `src/protocol/messages.ts`
+- `src/protocol/schema.ts`
+- `src/ui-host/bridge.ts`
+- `webview/src/App.tsx`
+- `webview/src/pages/AccountsManager.tsx`
+- `webview/src/pages/TokenPoolPanel.tsx`
+- `webview/src/api/types.ts`
+- `webview/src/styles.css`
 
 ### 1. pool-runner 按钮行为修复
 
@@ -392,3 +439,50 @@ Get-StartApps | Where-Object { $_.Name -like "*Codex*" } | Format-Table Name, Ap
 - 只要本项目有真实修改，结束前都要更新本文件
 - 如果当前进行中的 token pool 范围发生变化，也要写回本文件
 - 如果后续路线再次变化，例如从“Codex-only”重新扩展为别的形态，也必须先更新本文件再继续做
+
+
+## 2026-03-10 本轮补充修复
+
+这轮主要处理了账号管理 / 账号池列表交互上的两个实用问题：
+
+1. 拖拽排序与滚动冲突
+   - 账号池之前为了支持拖拽，尝试过窗口化渲染 + 内部纵向滚动，但实际在 Webview 里会导致：
+     - 页面滚动到底部受阻
+     - 拖拽排序落点不稳定
+   - 现已改回普通 table + 页面级滚动，只保留横向滚动；拖拽排序继续保留
+   - 当前实现优先稳定交互，不再在账号池里做内部纵向虚拟滚动
+
+2. 账号管理的 live 行不再参与排序
+   - 之前前端拖拽集合会把 `live` 行混进去，但后端持久化时又不会保存它，导致拖拽感知和最终结果不一致
+   - 现已改成：只有真实 profile 参与排序，`live` 只展示，不参与拖拽
+
+3. 从账号管理一键导入到账号池
+   - 账号管理表格的操作列新增 `导入到账号池`
+   - 会直接读取该账号槽位下的 `auth.json`，提取 token 并导入账号池
+   - 仍按账号池既有去重规则处理：优先 `account_id`，其次 `email`，重复时覆盖旧条目
+
+4. 账号池列表当前实现说明
+   - 当前账号池列表继续支持：
+     - 拖拽排序
+     - 三点菜单操作
+     - sticky 操作列
+     - 单条刷新额度
+   - 当前没有内部纵向滚动，页面整体可以滚到底
+
+### 本轮涉及文件
+
+- `src/engine/tokenPool.ts`
+- `src/protocol/messages.ts`
+- `src/protocol/schema.ts`
+- `src/ui-host/bridge.ts`
+- `webview/src/App.tsx`
+- `webview/src/api/types.ts`
+- `webview/src/pages/AccountsManager.tsx`
+- `webview/src/pages/TokenPoolPanel.tsx`
+- `webview/src/styles.css`
+
+### 当前确认状态
+
+- `npm run typecheck` 通过
+- `npm run build` 通过
+- 这轮修改尚未提交时，`AGENTS.md` 仍不应纳入提交

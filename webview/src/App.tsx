@@ -242,6 +242,9 @@ export default function App(): JSX.Element {
                 onImportTokenPoolSingle={() => dispatch({ type: "IMPORT_TOKEN_POOL_FILES", payload: { mode: "single" } })}
                 onImportTokenPoolMultiple={() => dispatch({ type: "IMPORT_TOKEN_POOL_FILES", payload: { mode: "multiple" } })}
                 onImportTokenPoolDirectory={() => dispatch({ type: "IMPORT_TOKEN_POOL_DIRECTORY" })}
+                onImportProfileToTokenPool={(profileId) =>
+                  dispatch({ type: "IMPORT_PROFILE_TO_TOKEN_POOL", payload: { codexHome: state.codexHome, profileId } })
+                }
                 onSyncCurrentToPoolRunner={() => dispatch({ type: "SYNC_CURRENT_TO_POOL_RUNNER", payload: { codexHome: state.codexHome } })}
                 onSwitchToPoolRunner={() =>
                   dispatch({
@@ -257,6 +260,9 @@ export default function App(): JSX.Element {
                 onDeleteTokenPoolEntry={(entryId) => dispatch({ type: "DELETE_TOKEN_POOL_ENTRY", payload: { entryId } })}
                 onMoveTokenPoolEntry={(entryId, direction) =>
                   dispatch({ type: "MOVE_TOKEN_POOL_ENTRY", payload: { entryId, direction } })
+                }
+                onReorderTokenPoolEntries={(orderedIds) =>
+                  dispatch({ type: "REORDER_TOKEN_POOL_ENTRIES", payload: { orderedIds } })
                 }
                 onUpdateTokenPoolSettings={(payload) => dispatch({ type: "SET_TOKEN_POOL_SETTINGS", payload })}
                 onExportProfile={(profileId) => {
@@ -321,6 +327,9 @@ export default function App(): JSX.Element {
                 onDelete={(profileId) => {
                   dispatch({ type: "DELETE_PROFILE", payload: { codexHome: state.codexHome, profileId } });
                 }}
+                onReorderProfiles={(orderedIds) =>
+                  dispatch({ type: "REORDER_PROFILES", payload: { codexHome: state.codexHome, orderedIds } })
+                }
                 onPreviewThreadCleanup={() => {
                   const threadIds = parseThreadIds(state.threadCleanupInput);
                   if (threadIds.length === 0) {

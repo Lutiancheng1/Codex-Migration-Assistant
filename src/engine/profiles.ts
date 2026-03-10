@@ -18,6 +18,7 @@ type StoredProfile = {
   id: string;
   name: string;
   path: string;
+  order: number;
   createdAt: string;
   updatedAt: string;
   lastActivatedAt?: string;
@@ -33,6 +34,7 @@ export type ProfileView = {
   id: string;
   name: string;
   path: string;
+  order: number;
   createdAt: string;
   updatedAt: string;
   lastActivatedAt?: string;
@@ -77,6 +79,17 @@ type TomlSection = {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function compareProfiles(a: Pick<StoredProfile, "order" | "name" | "createdAt">, b: Pick<StoredProfile, "order" | "name" | "createdAt">): number {
+  return a.order - b.order || a.name.localeCompare(b.name, "zh-CN") || a.createdAt.localeCompare(b.createdAt);
+}
+
+function nextProfileOrder(metadata: ProfilesMetadata): number {
+  if (metadata.profiles.length === 0) {
+    return 0;
+  }
+  return Math.max(...metadata.profiles.map((item) => item.order)) + 1;
 }
 
 function createTomlSection(header?: string): TomlSection {
@@ -297,6 +310,7 @@ async function readMetadata(paths: Paths): Promise<ProfilesMetadata> {
   const profiles = Array.isArray(parsed.profiles) ? parsed.profiles : [];
   const cleaned: StoredProfile[] = [];
   const seen = new Set<string>();
+  let hasExplicitOrder = false;
   for (const item of profiles) {
     if (!item || typeof item.id !== "string" || typeof item.name !== "string" || typeof item.path !== "string") {
       continue;
@@ -305,14 +319,27 @@ async function readMetadata(paths: Paths): Promise<ProfilesMetadata> {
       continue;
     }
     seen.add(item.id);
+    const parsedOrder = typeof (item as { order?: unknown }).order === "number" ? Number((item as { order?: unknown }).order) : undefined;
+    if (typeof parsedOrder === "number" && Number.isFinite(parsedOrder)) {
+      hasExplicitOrder = true;
+    }
     cleaned.push({
       id: item.id,
       name: item.name,
       path: path.resolve(item.path),
+      order: typeof parsedOrder === "number" && Number.isFinite(parsedOrder) ? parsedOrder : cleaned.length,
       createdAt: typeof item.createdAt === "string" ? item.createdAt : nowIso(),
       updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : nowIso(),
       lastActivatedAt: typeof item.lastActivatedAt === "string" ? item.lastActivatedAt : undefined
     });
+  }
+  if (!hasExplicitOrder) {
+    cleaned.sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+    cleaned.forEach((item, index) => {
+      item.order = index;
+    });
+  } else {
+    cleaned.sort(compareProfiles);
   }
   const activeProfileId = typeof parsed.activeProfileId === "string" ? parsed.activeProfileId : undefined;
   return { version: PROFILE_VERSION, activeProfileId, profiles: cleaned };
@@ -421,6 +448,7 @@ async function summarizeProfile(profile: StoredProfile): Promise<ProfileView> {
     id: profile.id,
     name: profile.name,
     path: profile.path,
+    order: profile.order,
     createdAt: profile.createdAt,
     updatedAt: profile.updatedAt,
     lastActivatedAt: profile.lastActivatedAt,
@@ -456,6 +484,7 @@ async function ensureBootstrapped(paths: Paths, metadata: ProfilesMetadata): Pro
         id,
         name: "主账号",
         path: profilePath,
+        order: nextProfileOrder(metadata),
         createdAt,
         updatedAt: createdAt,
         lastActivatedAt: createdAt
@@ -482,6 +511,7 @@ async function ensureBootstrapped(paths: Paths, metadata: ProfilesMetadata): Pro
         id: inferredId,
         name: preferredName,
         path: linkTarget,
+        order: nextProfileOrder(metadata),
         createdAt,
         updatedAt: createdAt,
         lastActivatedAt: createdAt
@@ -532,6 +562,7 @@ async function ensureBootstrapped(paths: Paths, metadata: ProfilesMetadata): Pro
     id,
     name: preferredName,
     path: targetPath,
+    order: nextProfileOrder(metadata),
     createdAt,
     updatedAt: createdAt,
     lastActivatedAt: createdAt
@@ -546,7 +577,7 @@ async function toSnapshot(paths: Paths, metadata: ProfilesMetadata, messages: st
   for (const item of metadata.profiles) {
     profiles.push(await summarizeProfile(item));
   }
-  profiles.sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+  profiles.sort(compareProfiles);
   return {
     codexHome: paths.codexHome,
     profilesRoot: paths.profilesRoot,
@@ -567,6 +598,7 @@ async function buildLiveProfile(paths: Paths): Promise<ProfileView | undefined> 
     id: "live",
     name: preferredLabel ? `当前账号（${preferredLabel}）` : "当前账号",
     path: paths.codexHome,
+    order: -1,
     createdAt: now,
     updatedAt: now,
     lastActivatedAt: now
@@ -630,7 +662,7 @@ export async function getProfilesSnapshot(codexHome: string, autoBootstrap = fal
     if (inferredActive === "live") {
       const liveProfile = await buildLiveProfile(paths);
       const storedProfiles = await Promise.all(metadata.profiles.map((item) => summarizeProfile(item)));
-      storedProfiles.sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+      storedProfiles.sort(compareProfiles);
       return {
         codexHome: paths.codexHome,
         profilesRoot: paths.profilesRoot,
@@ -686,6 +718,7 @@ export async function createProfile(codexHome: string, profileName: string): Pro
     id,
     name,
     path: profilePath,
+    order: nextProfileOrder(metadata),
     createdAt,
     updatedAt: createdAt
   });
@@ -726,6 +759,7 @@ async function ensureFixedProfileSlot(
     id: profileId,
     name: profileName,
     path: profilePath,
+    order: nextProfileOrder(metadata),
     createdAt,
     updatedAt: createdAt
   };
@@ -739,6 +773,23 @@ export async function ensureProfileSlot(codexHome: string, profileId: string, pr
   const { paths, metadata, messages } = loaded;
   await ensureFixedProfileSlot(paths, metadata, profileId, profileName, messages);
   await writeMetadata(paths, metadata);
+  return toSnapshot(paths, metadata, messages);
+}
+
+export async function reorderProfiles(codexHome: string, orderedIds: string[]): Promise<ProfilesSnapshot> {
+  const loaded = await loadBootstrappedMetadata(codexHome);
+  const { paths, metadata, messages } = loaded;
+  const currentIds = metadata.profiles.map((item) => item.id);
+  const seen = new Set<string>();
+  const normalized = orderedIds.filter((id) => currentIds.includes(id) && !seen.has(id) && seen.add(id));
+  const remainder = currentIds.filter((id) => !seen.has(id));
+  const finalIds = [...normalized, ...remainder];
+  const orderMap = new Map(finalIds.map((id, index) => [id, index]));
+  metadata.profiles = metadata.profiles
+    .map((item) => ({ ...item, order: orderMap.get(item.id) ?? item.order }))
+    .sort(compareProfiles);
+  await writeMetadata(paths, metadata);
+  messages.push("已更新账号槽位排序。",);
   return toSnapshot(paths, metadata, messages);
 }
 
