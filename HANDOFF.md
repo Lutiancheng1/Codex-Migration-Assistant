@@ -1,12 +1,12 @@
 # Codex Migration Extension Handoff
 
-最后更新：2026-03-10（修正拖拽排序语义与账号池大列表渲染）
+最后更新：2026-03-11（修正会话清理在损坏 SQLite 下的中断问题）
 
 ## 项目快照
 
 - 项目名：`codex-migration-extension`
 - 展示名：`Codex 迁移助手`
-- 当前版本：`1.0.1`
+- 当前版本：`1.0.2`
 - 形态：VS Code / Codex Webview 扩展
 - 技术栈：TypeScript、React、VS Code Webview、Node.js 20+
 - 目标：面向 Codex 用户的账号切换、数据迁移、备份恢复、会话清理与用量查看
@@ -245,7 +245,32 @@ UI 上也同步统一：
 - `webview/src/pages/TokenPoolPanel.tsx`
 - `webview/src/styles.css`
 
-### 5. 账号池自动重启 Codex 逻辑已放宽
+### 5. 会话清理兼容损坏 SQLite
+
+用户现场已经出现过 `database disk image is malformed`，此前这会导致会话清理执行阶段在打开 `state_*.sqlite` 时直接中断：
+
+- 预览阶段会忽略坏库，因此仍可能显示“命中线程 / 命中文件”
+- 执行阶段一旦某个 `state_*.sqlite` 打不开，整条账号清理会提前失败
+- 结果上会表现成：
+  - 删除统计几乎全是 0
+  - rollout 文件其实没有进入删除逻辑
+  - UI 只看到错误，但不容易理解为什么“预览能命中，执行却没删掉”
+
+本轮已修正为：
+
+- 单个损坏 SQLite 只记录到该账号的 `errors`
+- 不再阻断同账号后续的：
+  - rollout/session 文件删除
+  - `.codex-global-state.json` 线程标题与顺序清理
+- 若存在 SQLite 清理错误，结果仍标记 `clean=false`，避免误报“已完全清理”
+- 已补单测覆盖“SQLite 损坏但 rollout/global state 仍应清掉”的回归场景
+
+相关文件：
+
+- `src/engine/threadCleanup.ts`
+- `test/thread-cleanup.test.mjs`
+
+### 6. 账号池自动重启 Codex 逻辑已放宽
 
 此前 token pool 的“切换后自动重启 Codex”只在检测到当前存在占用 `.codex` 目录的 Codex 进程时才会执行：
 
@@ -264,7 +289,7 @@ UI 上也同步统一：
 
 - `src/engine/tokenPool.ts`
 
-### 6. 已用尽账号禁止手动切换
+### 7. 已用尽账号禁止手动切换
 
 当前账号池规则新增一层显式保护：
 
@@ -284,7 +309,7 @@ UI 上也同步统一：
 - `npm run typecheck` 通过
 - `npm run build` 通过
 
-### 7. 修复 `SWITCH_TO_POOL_RUNNER` 在 Windows 首次切换时卡住
+### 8. 修复 `SWITCH_TO_POOL_RUNNER` 在 Windows 首次切换时卡住
 
 用户在 Windows 端首次点击“创建并切换到 pool-runner”时，流程会先同步记录，再进入真正的账号切换。
 
@@ -305,7 +330,7 @@ UI 上也同步统一：
 
 - `src/ui-host/bridge.ts`
 
-### 8. token pool 手动切换前必须先刷新并校验额度
+### 9. token pool 手动切换前必须先刷新并校验额度
 
 此前账号池条目刚导入后默认是 `neverChecked`，用户直接点“切换”会立即把 `auth.json` 改掉：
 
@@ -331,7 +356,7 @@ UI 上也同步统一：
 
 - `src/engine/tokenPool.ts`
 
-### 9. token pool 操作列背景与 Windows 商店版启动匹配
+### 10. token pool 操作列背景与 Windows 商店版启动匹配
 
 本轮还补了两处易感知问题：
 

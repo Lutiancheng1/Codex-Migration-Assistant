@@ -237,3 +237,35 @@ test("execute is compatible when thread_dynamic_tools table is missing", async (
     await fs.rm(fixture.root, { recursive: true, force: true });
   }
 });
+
+test("execute still removes rollout/global state when sqlite is malformed", async () => {
+  const fixture = await createFixture();
+  try {
+    await fs.writeFile(fixture.dbPath, Buffer.from("not-a-sqlite-db"));
+
+    const result = await executeThreadCleanup({
+      codexHome: fixture.codexHome,
+      threadIds: ["thread_alpha"],
+      scope: "all",
+      backupEnabled: false,
+      applyMode: "restartLater",
+      detectBusyProcesses: async () => []
+    });
+
+    assert.equal(result.profiles[0].deleted.files, 1);
+    assert.equal(result.profiles[0].deleted.globalStateTitles, 1);
+    assert.equal(result.profiles[0].verification.fileResidual, 0);
+    assert.equal(result.profiles[0].verification.globalStateResidual, 0);
+    assert.equal(result.profiles[0].verification.clean, false);
+    assert.equal(result.profiles[0].errors.some((item) => item.includes("state_5.sqlite")), true);
+
+    const rolloutStat = await fs.stat(path.join(fixture.codexHome, "sessions", "rollout-2026-03-05T22-33-54-thread_alpha.jsonl")).catch(() => undefined);
+    assert.equal(Boolean(rolloutStat), false);
+
+    const globalStateRaw = await fs.readFile(path.join(fixture.codexHome, ".codex-global-state.json"), "utf8");
+    const globalState = JSON.parse(globalStateRaw);
+    assert.equal(globalState["electron-persisted-atom-state"]["thread-titles"].titles.thread_alpha, undefined);
+  } finally {
+    await fs.rm(fixture.root, { recursive: true, force: true });
+  }
+});

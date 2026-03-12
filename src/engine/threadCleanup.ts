@@ -723,8 +723,10 @@ async function executeProfileCleanup(
   deleted: ThreadCleanupProfileExecuteResult["deleted"];
   verification: ThreadCleanupProfileExecuteResult["verification"];
   warnings: string[];
+  errors: string[];
 }> {
   const warnings: string[] = [];
+  const errors: string[] = [];
   const deleted = {
     threads: 0,
     logs: 0,
@@ -747,6 +749,12 @@ async function executeProfileCleanup(
       if (dbDeleted.threads + dbDeleted.logs + dbDeleted.dynamicTools > 0) {
         session.dirty = true;
       }
+    } catch (error) {
+      if (isLikelyLockError(error)) {
+        throw error;
+      }
+      const reason = error instanceof Error ? error.message : String(error);
+      errors.push(`Failed to clean ${path.basename(dbPath)}: ${reason}`);
     } finally {
       if (session) {
         await closeSqliteSession(session);
@@ -770,9 +778,10 @@ async function executeProfileCleanup(
       dbResidual,
       fileResidual: fileResult.residual,
       globalStateResidual: globalStateResult.residual,
-      clean: dbResidual + fileResult.residual + globalStateResult.residual === 0
+      clean: errors.length === 0 && dbResidual + fileResult.residual + globalStateResult.residual === 0
     },
-    warnings
+    warnings,
+    errors
   };
 }
 
@@ -895,6 +904,7 @@ export async function executeThreadCleanup(params: {
         profileResult.deleted = execution.deleted;
         profileResult.verification = execution.verification;
         profileResult.warnings.push(...execution.warnings);
+        profileResult.errors.push(...execution.errors);
       };
 
       try {
