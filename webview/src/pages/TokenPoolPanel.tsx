@@ -1,6 +1,7 @@
 import { createPortal } from "react-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ProfileSummary, TokenPoolEntry, TokenPoolSnapshot } from "../api/types";
+import { summarizeUsageErrors } from "./usageErrorSummary";
 
 type Props = {
   codexHome: string;
@@ -64,6 +65,16 @@ export function TokenPoolPanel(props: Props): JSX.Element {
   const entries = props.tokenPool.entries;
   const isPoolRunnerActive = props.activeProfileId === props.poolRunnerProfile?.id;
   const canSyncCurrentToPoolRunner = !isPoolRunnerActive && !!props.activeProfileId;
+  const usageErrorSummary = useMemo(
+    () =>
+      summarizeUsageErrors(
+        entries.map((entry) => ({
+          name: entry.email || entry.accountId,
+          usageError: entry.usageError
+        }))
+      ),
+    [entries]
+  );
 
   useEffect(() => {
     if (!openActionEntryId) {
@@ -369,6 +380,12 @@ export function TokenPoolPanel(props: Props): JSX.Element {
           </tbody>
         </table>
       </div>
+
+      {usageErrorSummary ? (
+        <div className="warning">
+          最近一次账号池用量刷新存在失败项：{usageErrorSummary}
+        </div>
+      ) : null}
 
       <p className="token-pool-help">说明：账号池不支持全量查额度。自动检测只检查当前激活账号，其它账号只支持单条手动刷新。</p>
     </section>

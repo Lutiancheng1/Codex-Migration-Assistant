@@ -1,6 +1,6 @@
 # Codex Migration Extension Handoff
 
-最后更新：2026-04-16（扩展版本升到 1.0.4，重打 VSIX；用量失败提示已收敛）
+最后更新：2026-04-16（扩展版本升到 1.0.4，重打 VSIX；用量失败提示已收敛，并拆分账号列表/账号池失败摘要）
 
 ## 项目快照
 
@@ -258,6 +258,29 @@ token pool 已经不再按“直接改当前活动槽位 auth”理解，而是�
 相关文件：
 
 - `src/ui-host/bridge.ts`
+
+### 0.1.2 账号列表与账号池的用量失败提示已拆分
+
+之前账号管理页底部只汇总 `profiles[].usageError`，账号池面板没有自己的失败摘要区，导致用户在“账号池刷新失败”场景下，只能在账号列表区域看到统一警告，感知上像是提示串位。
+
+本轮已改成：
+
+- 新增共享 helper `webview/src/pages/usageErrorSummary.ts`
+- `AccountsManager` 底部提示文案改成：
+  - `最近一次账号列表用量刷新存在失败项`
+- `TokenPoolPanel` 新增独立失败摘要区，文案为：
+  - `最近一次账号池用量刷新存在失败项`
+- 两块区域各自只汇总自己的数据源：
+  - 账号列表只看 `profiles[].usageError`
+  - 账号池只看 `tokenPool.entries[].usageError`
+
+这块行为不要再合并回“单一底部提示”，否则会继续让用户误判错误来源。
+
+相关文件：
+
+- `webview/src/pages/AccountsManager.tsx`
+- `webview/src/pages/TokenPoolPanel.tsx`
+- `webview/src/pages/usageErrorSummary.ts`
 - `src/desktop/runner.ts`
 - `src/engine/tokenPool.ts`
 

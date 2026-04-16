@@ -11,6 +11,7 @@ import type {
 } from "../api/types";
 import { InfoHint } from "../components/InfoHint";
 import { TokenPoolPanel } from "./TokenPoolPanel";
+import { summarizeUsageErrors } from "./usageErrorSummary";
 
 const POOL_RUNNER_PROFILE_ID = "pool-runner";
 
@@ -89,30 +90,6 @@ function computeCleanupSummary(preview?: ThreadCleanupPreviewResult): {
   };
 }
 
-function summarizeUsageErrors(profiles: ProfileSummary[]): string | undefined {
-  const items = profiles
-    .filter((item) => item.usageError)
-    .map((item) => ({
-      name: item.name,
-      error: item.usageError as string
-    }));
-
-  if (items.length === 0) {
-    return undefined;
-  }
-
-  const groups = new Map<string, string[]>();
-  for (const item of items) {
-    const names = groups.get(item.error) ?? [];
-    names.push(item.name);
-    groups.set(item.error, names);
-  }
-
-  return Array.from(groups.entries())
-    .map(([reason, names]) => `${names.join("、")}：${reason}`)
-    .join("；");
-}
-
 export function AccountsManager(props: Props): JSX.Element {
   const sectionMode = props.sectionMode ?? "all";
   const showTokenPool = sectionMode === "all" || sectionMode === "tokenPool";
@@ -142,7 +119,10 @@ export function AccountsManager(props: Props): JSX.Element {
   const refreshUsageRef = React.useRef(props.onRefreshUsage);
   const profilesCountRef = React.useRef(props.profiles.length);
   const cleanupSummary = useMemo(() => computeCleanupSummary(props.threadCleanupPreview), [props.threadCleanupPreview]);
-  const usageErrorSummary = useMemo(() => summarizeUsageErrors(props.profiles), [props.profiles]);
+  const usageErrorSummary = useMemo(
+    () => summarizeUsageErrors(props.profiles.map((profile) => ({ name: profile.name, usageError: profile.usageError }))),
+    [props.profiles]
+  );
   const canPreviewCleanup =
     props.threadCleanupInput.trim().length > 0 &&
     (props.threadCleanupScope !== "single" || props.threadCleanupProfileId.trim().length > 0);
@@ -601,7 +581,7 @@ export function AccountsManager(props: Props): JSX.Element {
       {usageErrorSummary
         ? (
             <div className="warning">
-              最近一次用量刷新存在失败项：{usageErrorSummary}
+              最近一次账号列表用量刷新存在失败项：{usageErrorSummary}
             </div>
           )
         : null}
