@@ -1,6 +1,6 @@
 # Codex Migration Extension Handoff
 
-最后更新：2026-04-16（扩展版本升到 1.0.4，重打 VSIX；用量失败提示已收敛，并拆分账号列表/账号池失败摘要）
+最后更新：2026-04-16（扩展版本升到 1.0.4，重打 VSIX；用量失败提示已收敛并拆分；桌面版已切到 Apple/macOS 风格新壳）
 
 ## 项目快照
 
@@ -281,6 +281,52 @@ token pool 已经不再按“直接改当前活动槽位 auth”理解，而是�
 - `webview/src/pages/AccountsManager.tsx`
 - `webview/src/pages/TokenPoolPanel.tsx`
 - `webview/src/pages/usageErrorSummary.ts`
+
+### 0.1.3 macOS 独立版 UI 已开始脱离扩展外观
+
+用户明确要求桌面版不要继续复用扩展的视觉外观，改成更接近 Apple / macOS 的窗口式体验。本轮已经先把桌面端的主壳、页面信息架构和视觉令牌整体替换了一轮，重点不是继续套 `DesktopChrome`，而是直接把 app 改成：
+
+- 顶部 window toolbar + traffic lights 风格头部
+- 顶部 segmented tabs 横向导航
+- 主内容区 + 右侧 inspector 双栏工作台
+- 统一的 surface card / metric tile / toolbar chip 设计语言
+- light/dark 两套基于材质和毛玻璃的 macOS 风格变量
+
+当前落地状态：
+
+- `apps/desktop-macos/src/App.tsx`
+  - 不再使用共享 `DesktopChrome`
+  - 改为桌面端本地 shell、页面标题区、toolbar、侧栏、结果卡片、进度卡片
+  - `overview / accounts / tokenPool / migration / cleanup / settings` 六个 tab 都已接入新结构
+- `apps/desktop-macos/src/desktop.css`
+  - 已从旧桌面样式整文件重写
+  - 新增 macOS 风格 token、toolbar、segmented control、surface、metric、inspector、嵌入式 legacy panel override
+  - 继续兼容 `AccountsManager / ExportWizard / ImportWizard` 的底层功能，但视觉上已经压进新桌面体系
+
+本轮验证已通过：
+
+- `npm --workspace @codex-migration/desktop-macos run build`
+- `npm run build:desktop`
+- `cargo check --manifest-path apps/desktop-macos/src-tauri/Cargo.toml`
+- `npm --workspace @codex-migration/desktop-macos run tauri:build`
+- bundle 内 sidecar 烟测：
+  - `initAppState`
+  - `previewThreadCleanup`
+
+本地产物已重新生成：
+
+- `apps/desktop-macos/src-tauri/target/release/bundle/macos/Codex Migration Assistant.app`
+- `apps/desktop-macos/src-tauri/target/release/bundle/dmg/Codex Migration Assistant_1.0.2_aarch64.dmg`
+
+当前仍然保留的边界：
+
+- 桌面版虽然视觉层已明显脱离扩展，但功能表单内部仍复用了共享 `AccountsManager / ExportWizard / ImportWizard`
+- 如果后续继续抬高标准，下一步要做的是把这些页面再拆成完全桌面专属组件，而不是只靠 override
+
+相关文件：
+
+- `apps/desktop-macos/src/App.tsx`
+- `apps/desktop-macos/src/desktop.css`
 - `src/desktop/runner.ts`
 - `src/engine/tokenPool.ts`
 

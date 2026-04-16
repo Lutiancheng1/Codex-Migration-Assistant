@@ -1,248 +1,851 @@
-.desktop-shell {
-  color: rgba(255, 255, 255, 0.92);
+:root {
+  color-scheme: light dark;
 }
 
-.desktop-shell .card,
-.desktop-shell .thread-cleanup-panel {
-  border-color: rgba(255, 255, 255, 0.08);
+.desktop-app {
+  --mac-bg: #eef2f7;
+  --mac-surface: rgba(255, 255, 255, 0.72);
+  --mac-surface-strong: rgba(255, 255, 255, 0.88);
+  --mac-surface-soft: rgba(246, 248, 252, 0.78);
+  --mac-border: rgba(15, 23, 42, 0.08);
+  --mac-border-strong: rgba(15, 23, 42, 0.12);
+  --mac-ink: #172033;
+  --mac-muted: #5b6477;
+  --mac-subtle: #7f8798;
+  --mac-accent: #0a84ff;
+  --mac-accent-soft: rgba(10, 132, 255, 0.14);
+  --mac-good: #2f9d62;
+  --mac-good-soft: rgba(47, 157, 98, 0.14);
+  --mac-caution: #d98518;
+  --mac-caution-soft: rgba(217, 133, 24, 0.14);
+  --mac-danger: #cf4a4a;
+  --mac-danger-soft: rgba(207, 74, 74, 0.14);
+  min-height: 100vh;
+  padding: 18px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.028)),
-    rgba(17, 18, 22, 0.88);
-  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.26);
-  backdrop-filter: blur(24px);
+    radial-gradient(circle at top left, rgba(118, 160, 255, 0.28), transparent 34%),
+    radial-gradient(circle at 85% 10%, rgba(255, 215, 175, 0.34), transparent 24%),
+    linear-gradient(180deg, #f6f8fb, #e8edf5 44%, #edf1f7);
+  color: var(--mac-ink);
+  font-family:
+    "SF Pro Display",
+    "SF Pro Text",
+    -apple-system,
+    BlinkMacSystemFont,
+    "PingFang SC",
+    "Noto Sans SC",
+    sans-serif;
 }
 
-.desktop-shell .hero {
-  min-height: 0;
-}
-
-.desktop-overview-grid,
-.desktop-migration-grid,
-.desktop-settings-grid {
-  align-items: start;
-}
-
-.desktop-hero-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1.6fr) auto;
-  gap: 24px;
-  border-radius: 28px;
-  padding: 28px;
+.desktop-window {
+  min-height: calc(100vh - 36px);
+  border-radius: 30px;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.58);
   background:
-    radial-gradient(circle at top left, rgba(241, 215, 188, 0.28), transparent 34%),
-    radial-gradient(circle at 82% 18%, rgba(117, 150, 255, 0.22), transparent 26%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.03)),
-    rgba(16, 17, 20, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.38)),
+    rgba(255, 255, 255, 0.4);
+  box-shadow:
+    0 24px 80px rgba(39, 57, 88, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.68);
+  backdrop-filter: blur(28px) saturate(160%);
 }
 
-.desktop-section-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 12px;
+.desktop-topbar,
+.desktop-toolbar-band,
+.surface-card,
+.desktop-embedded-surface .thread-cleanup-panel,
+.desktop-embedded-surface .thread-cleanup-panel-static {
+  border: 1px solid var(--mac-border);
+  background: var(--mac-surface);
+  backdrop-filter: blur(24px) saturate(160%);
+  box-shadow: 0 14px 32px rgba(39, 57, 88, 0.08);
+}
+
+.desktop-topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 16px;
+  border-radius: 22px;
+}
+
+.desktop-topbar-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 0;
+}
+
+.mac-traffic-lights {
+  display: flex;
+  gap: 8px;
+  padding-top: 3px;
+}
+
+.mac-traffic-light {
+  width: 12px;
+  height: 12px;
   border-radius: 999px;
-  background: rgba(245, 206, 155, 0.16);
-  color: rgba(255, 237, 214, 0.94);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42);
+}
+
+.mac-traffic-light-close {
+  background: #ff5f57;
+}
+
+.mac-traffic-light-minimize {
+  background: #ffbd2f;
+}
+
+.mac-traffic-light-zoom {
+  background: #28c840;
+}
+
+.desktop-title-lockup {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.desktop-app-kicker {
+  color: var(--mac-subtle);
   font-size: 11px;
   font-weight: 650;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.desktop-hero-copy {
-  display: grid;
-  gap: 14px;
-}
-
-.desktop-hero-copy h2 {
+.desktop-title-lockup h1 {
   margin: 0;
-  max-width: 12ch;
-  font-size: clamp(30px, 4vw, 48px);
-  line-height: 1.02;
+  font-size: 22px;
+  line-height: 1;
   letter-spacing: -0.04em;
-  font-weight: 680;
+  font-weight: 720;
 }
 
-.desktop-hero-copy p {
-  max-width: 72ch;
-  color: rgba(255, 255, 255, 0.76);
+.desktop-title-lockup p {
+  margin: 5px 0 0;
+  color: var(--mac-muted);
+  font-size: 13px;
+}
+
+.desktop-topbar-status,
+.section-lead-badges,
+.desktop-toolbar-actions,
+.surface-card-actions,
+.desktop-inline-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.toolbar-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.52);
+  color: var(--mac-muted);
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.toolbar-chip-good {
+  background: var(--mac-good-soft);
+  color: #1f6d45;
+}
+
+.toolbar-chip-caution {
+  background: var(--mac-caution-soft);
+  color: #8c560f;
+}
+
+.toolbar-chip-danger {
+  background: var(--mac-danger-soft);
+  color: #8f2f2f;
+}
+
+.desktop-toolbar-band {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 22px;
+}
+
+.desktop-segmented-control {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(15, 23, 42, 0.05);
+}
+
+.desktop-segment {
+  display: grid;
+  gap: 2px;
+  min-width: 112px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 0;
+  background: transparent;
+  color: var(--mac-muted);
+  text-align: left;
+  cursor: pointer;
+}
+
+.desktop-segment span {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.desktop-segment small {
+  color: var(--mac-subtle);
+  font-size: 11px;
+}
+
+.desktop-segment.active {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(245, 248, 252, 0.76)),
+    rgba(255, 255, 255, 0.72);
+  color: var(--mac-ink);
+  box-shadow:
+    0 8px 18px rgba(39, 57, 88, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+.desktop-workbench {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 18px;
+  margin-top: 18px;
+  align-items: start;
+}
+
+.desktop-content-column,
+.desktop-inspector-column,
+.desktop-migration-stack,
+.desktop-settings-stack,
+.result-card-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.section-lead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  padding: 8px 4px 2px;
+}
+
+.section-lead-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.surface-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  width: fit-content;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(10, 132, 255, 0.1);
+  color: #0a5eb5;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.section-lead h1 {
+  margin: 0;
+  max-width: 16ch;
+  font-size: clamp(30px, 4vw, 46px);
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+  font-weight: 760;
+}
+
+.section-lead p {
+  margin: 0;
+  max-width: 78ch;
+  color: var(--mac-muted);
   font-size: 14px;
+  line-height: 1.7;
 }
 
-.desktop-hero-actions {
+.section-lead-actions {
   display: flex;
   flex-direction: column;
-  gap: 10px;
   justify-content: flex-end;
-  min-width: 180px;
+  gap: 10px;
 }
 
-.desktop-hero-actions button {
-  min-height: 42px;
-}
-
-.desktop-stat-grid {
+.metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
 }
 
-.desktop-stat-card {
-  display: grid;
-  gap: 8px;
-  padding: 18px 18px 16px;
-  border-radius: 22px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.045);
-}
-
-.desktop-stat-label {
-  color: rgba(255, 255, 255, 0.52);
-  font-size: 12px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.desktop-stat-value {
-  font-size: clamp(22px, 2vw, 34px);
-  line-height: 1;
-  letter-spacing: -0.04em;
-}
-
-.desktop-stat-meta {
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 13px;
-}
-
-.desktop-overview-panels {
-  display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.7fr);
-  gap: 16px;
-}
-
-.desktop-result-card {
-  display: grid;
-  gap: 8px;
-}
-
-.desktop-inline-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-top: 14px;
-}
-
-.desktop-shell .thread-cleanup-panel-static {
-  padding-top: 18px;
-}
-
-.thread-cleanup-static-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: 12px;
-  margin-bottom: 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.thread-cleanup-static-header h3 {
-  margin: 0;
-  font-size: 17px;
-  letter-spacing: -0.02em;
-}
-
-.desktop-shell .accounts-table-wrap,
-.desktop-shell .token-pool-table-wrap {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(8, 9, 12, 0.22);
-  padding-bottom: 14px;
-}
-
-.desktop-shell .accounts-table {
-  min-width: 760px;
-}
-
-.desktop-shell .token-pool-table {
-  min-width: 620px;
-}
-
-.desktop-shell .accounts-table th,
-.desktop-shell .accounts-table td {
-  border-bottom-color: rgba(255, 255, 255, 0.06);
-}
-
-.desktop-shell .accounts-table th,
-.desktop-shell .token-pool-table th {
-  color: rgba(255, 255, 255, 0.52);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.desktop-shell .accounts-table td:nth-child(2),
-.desktop-shell .accounts-table td:nth-child(3),
-.desktop-shell .token-pool-table .token-pool-account-col {
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.desktop-shell .token-pool-table .token-pool-account-col strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.desktop-shell .token-pool-settings {
-  display: grid;
+.metric-grid-3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.desktop-shell .token-pool-import-actions {
+.metric-tile {
+  display: grid;
+  gap: 8px;
+  min-height: 132px;
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid var(--mac-border);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(247, 249, 252, 0.82)),
+    rgba(255, 255, 255, 0.84);
+  box-shadow: 0 12px 28px rgba(39, 57, 88, 0.08);
+}
+
+.metric-label {
+  color: var(--mac-subtle);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.metric-value {
+  font-size: clamp(24px, 3vw, 36px);
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.metric-meta {
+  color: var(--mac-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.metric-tile-good {
+  background:
+    linear-gradient(180deg, rgba(237, 250, 242, 0.92), rgba(250, 253, 251, 0.84)),
+    rgba(255, 255, 255, 0.84);
+}
+
+.metric-tile-caution {
+  background:
+    linear-gradient(180deg, rgba(255, 247, 233, 0.94), rgba(255, 252, 247, 0.82)),
+    rgba(255, 255, 255, 0.84);
+}
+
+.metric-tile-danger {
+  background:
+    linear-gradient(180deg, rgba(255, 239, 239, 0.92), rgba(255, 249, 249, 0.82)),
+    rgba(255, 255, 255, 0.84);
+}
+
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.bento-span-2 {
+  grid-column: span 2;
+}
+
+.surface-card {
+  border-radius: 26px;
+  padding: 18px;
+}
+
+.surface-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.surface-card-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.surface-card-copy h2 {
+  margin: 0;
+  font-size: 19px;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+}
+
+.surface-card-copy p {
+  margin: 0;
+  color: var(--mac-muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.surface-card-body {
+  min-width: 0;
+}
+
+.definition-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.definition-row {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
   gap: 10px;
+  align-items: start;
+}
+
+.definition-row dt {
+  color: var(--mac-subtle);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.definition-row dd {
+  margin: 0;
+  color: var(--mac-ink);
+  font-size: 14px;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.progress-card {
+  display: grid;
+  gap: 12px;
+}
+
+.progress-track {
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #0a84ff, #63a8ff);
+}
+
+.progress-copy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--mac-muted);
+  font-size: 13px;
+}
+
+.progress-copy strong {
+  color: var(--mac-ink);
+  font-size: 14px;
+}
+
+.activity-log {
+  display: grid;
+  gap: 8px;
+  max-height: 420px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.activity-log-line {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.52);
+  color: var(--mac-muted);
+  font-size: 12px;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.result-card-stack > p {
+  margin: 0;
+}
+
+.desktop-window button,
+.desktop-window input,
+.desktop-window select,
+.desktop-window textarea {
+  font-family: inherit;
+}
+
+.desktop-window button {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 13px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(245, 248, 252, 0.88)),
+    rgba(255, 255, 255, 0.86);
+  color: var(--mac-ink);
+  box-shadow:
+    0 6px 18px rgba(39, 57, 88, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88);
+}
+
+.desktop-window button.primary,
+.desktop-window .primary {
+  border-color: rgba(10, 132, 255, 0.18);
+  background: linear-gradient(180deg, #3c9dff, #0a84ff);
+  color: #ffffff;
+}
+
+.desktop-window button.danger,
+.desktop-window .danger {
+  border-color: rgba(207, 74, 74, 0.18);
+  background: linear-gradient(180deg, #ef6c6c, #cf4a4a);
+  color: #ffffff;
+}
+
+.desktop-window button.secondary,
+.desktop-window .secondary {
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.desktop-window button:hover {
+  filter: saturate(1.02);
+}
+
+.desktop-window button:focus-visible,
+.desktop-window input:focus-visible,
+.desktop-window select:focus-visible,
+.desktop-window textarea:focus-visible {
+  outline: 3px solid rgba(10, 132, 255, 0.24);
+  outline-offset: 2px;
+}
+
+.desktop-window input,
+.desktop-window select,
+.desktop-window textarea {
+  border-radius: 13px;
+  border: 1px solid var(--mac-border-strong);
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--mac-ink);
+  box-shadow: inset 0 1px 2px rgba(39, 57, 88, 0.05);
+}
+
+.desktop-window .warning {
+  color: #8c560f;
+  background: rgba(217, 133, 24, 0.12);
+  border: 1px solid rgba(217, 133, 24, 0.14);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+.desktop-window .error,
+.text-danger {
+  color: #8f2f2f;
+}
+
+.text-good {
+  color: #1f6d45;
+}
+
+.text-caution {
+  color: #8c560f;
+}
+
+.desktop-embedded-surface {
+  overflow: hidden;
+}
+
+.desktop-embedded-surface > .surface-card-body > section {
+  min-width: 0;
+}
+
+.desktop-embedded-surface .thread-cleanup-panel-static,
+.desktop-embedded-surface .thread-cleanup-panel {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.desktop-embedded-surface .thread-cleanup-static-header {
+  display: none;
+}
+
+.desktop-embedded-surface .grid,
+.desktop-embedded-surface .account-create,
+.desktop-embedded-surface .token-pool-runner-summary,
+.desktop-embedded-surface .token-pool-import-actions,
+.desktop-embedded-surface .token-pool-settings,
+.desktop-embedded-surface .thread-cleanup-controls,
+.desktop-embedded-surface .thread-cleanup-quick-actions {
+  gap: 12px;
+}
+
+.desktop-embedded-surface .account-create,
+.desktop-embedded-surface .token-pool-import-actions,
+.desktop-embedded-surface .thread-cleanup-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.desktop-embedded-surface .account-create-input {
+  min-width: 280px;
+}
+
+.desktop-embedded-surface .account-create-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.desktop-embedded-surface .accounts-table-wrap,
+.desktop-embedded-surface .token-pool-table-wrap {
+  border: 1px solid var(--mac-border);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.42);
+  padding-bottom: 12px;
+}
+
+.desktop-embedded-surface .accounts-table,
+.desktop-embedded-surface .token-pool-table {
+  min-width: 760px;
+}
+
+.desktop-embedded-surface .accounts-table th,
+.desktop-embedded-surface .accounts-table td {
+  border-bottom-color: rgba(15, 23, 42, 0.05);
+}
+
+.desktop-embedded-surface .accounts-table th,
+.desktop-embedded-surface .token-pool-table th {
+  color: var(--mac-subtle);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.desktop-embedded-surface .accounts-table tr.current,
+.desktop-embedded-surface .token-pool-table tr.current {
+  background: rgba(10, 132, 255, 0.08);
+}
+
+.desktop-embedded-surface .drag-handle-button,
+.desktop-embedded-surface .action-trigger {
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+.desktop-embedded-surface .token-pool-account-col,
+.desktop-embedded-surface .accounts-table td:nth-child(2),
+.desktop-embedded-surface .accounts-table td:nth-child(3) {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.desktop-embedded-surface .modal-overlay {
+  backdrop-filter: blur(10px);
+}
+
+.desktop-embedded-surface .modal-content {
+  border-radius: 24px;
+  border: 1px solid var(--mac-border);
+  background: var(--mac-surface-strong);
+  box-shadow: 0 28px 60px rgba(39, 57, 88, 0.18);
+}
+
+.desktop-embedded-surface .thread-cleanup-profile-card {
+  border-radius: 18px;
+  border: 1px solid var(--mac-border);
+  background: rgba(255, 255, 255, 0.54);
+}
+
+.desktop-embedded-surface pre {
+  font-family: "SF Mono", "JetBrains Mono", ui-monospace, monospace;
 }
 
 @media (max-width: 1380px) {
-  .desktop-stat-grid,
-  .desktop-shell .token-pool-settings {
+  .desktop-workbench {
+    grid-template-columns: 1fr;
+  }
+
+  .desktop-inspector-column {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: grid;
+  }
+
+  .metric-grid,
+  .metric-grid-3,
+  .bento-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .desktop-shell .accounts-table th:nth-child(5),
-  .desktop-shell .accounts-table td:nth-child(5),
-  .desktop-shell .accounts-table th:nth-child(10),
-  .desktop-shell .accounts-table td:nth-child(10),
-  .desktop-shell .token-pool-table th:nth-child(3),
-  .desktop-shell .token-pool-table td:nth-child(3) {
+  .bento-span-2 {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 1100px) {
+  .desktop-toolbar-band,
+  .desktop-topbar,
+  .section-lead {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .desktop-topbar-status,
+  .desktop-toolbar-actions,
+  .section-lead-actions {
+    justify-content: flex-start;
+  }
+
+  .desktop-segmented-control {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .metric-grid,
+  .metric-grid-3,
+  .bento-grid,
+  .desktop-inspector-column {
+    grid-template-columns: 1fr;
+  }
+
+  .bento-span-2 {
+    grid-column: span 1;
+  }
+
+  .desktop-embedded-surface .accounts-table th:nth-child(5),
+  .desktop-embedded-surface .accounts-table td:nth-child(5),
+  .desktop-embedded-surface .accounts-table th:nth-child(10),
+  .desktop-embedded-surface .accounts-table td:nth-child(10),
+  .desktop-embedded-surface .token-pool-table th:nth-child(3),
+  .desktop-embedded-surface .token-pool-table td:nth-child(3) {
     display: none;
   }
 }
 
-@media (max-width: 1240px) {
-  .desktop-hero-card,
-  .desktop-overview-panels {
-    grid-template-columns: 1fr;
+@media (max-width: 780px) {
+  .desktop-app {
+    padding: 10px;
   }
 
-  .desktop-shell .accounts-table th:nth-child(3),
-  .desktop-shell .accounts-table td:nth-child(3),
-  .desktop-shell .accounts-table th:nth-child(6),
-  .desktop-shell .accounts-table td:nth-child(6),
-  .desktop-shell .accounts-table th:nth-child(9),
-  .desktop-shell .accounts-table td:nth-child(9),
-  .desktop-shell .token-pool-table th:nth-child(7),
-  .desktop-shell .token-pool-table td:nth-child(7) {
+  .desktop-window {
+    min-height: calc(100vh - 20px);
+    padding: 12px;
+    border-radius: 22px;
+  }
+
+  .desktop-title-lockup h1 {
+    font-size: 18px;
+  }
+
+  .section-lead h1 {
+    font-size: 30px;
+  }
+
+  .desktop-embedded-surface .accounts-table th:nth-child(3),
+  .desktop-embedded-surface .accounts-table td:nth-child(3),
+  .desktop-embedded-surface .accounts-table th:nth-child(6),
+  .desktop-embedded-surface .accounts-table td:nth-child(6),
+  .desktop-embedded-surface .accounts-table th:nth-child(9),
+  .desktop-embedded-surface .accounts-table td:nth-child(9),
+  .desktop-embedded-surface .token-pool-table th:nth-child(7),
+  .desktop-embedded-surface .token-pool-table td:nth-child(7) {
     display: none;
   }
 }
 
-@media (max-width: 980px) {
-  .desktop-stat-grid,
-  .desktop-shell .token-pool-settings {
-    grid-template-columns: 1fr;
+@media (prefers-color-scheme: dark) {
+  .desktop-app {
+    --mac-bg: #0f1218;
+    --mac-surface: rgba(24, 28, 38, 0.76);
+    --mac-surface-strong: rgba(27, 32, 43, 0.92);
+    --mac-surface-soft: rgba(20, 24, 34, 0.82);
+    --mac-border: rgba(255, 255, 255, 0.08);
+    --mac-border-strong: rgba(255, 255, 255, 0.12);
+    --mac-ink: rgba(245, 248, 255, 0.96);
+    --mac-muted: rgba(225, 230, 240, 0.72);
+    --mac-subtle: rgba(225, 230, 240, 0.52);
+    background:
+      radial-gradient(circle at top left, rgba(70, 110, 214, 0.28), transparent 36%),
+      radial-gradient(circle at 82% 12%, rgba(214, 159, 84, 0.22), transparent 24%),
+      linear-gradient(180deg, #0d1017, #111723 46%, #0f141f);
   }
 
-  .desktop-shell {
-    padding: 16px 16px 24px;
+  .desktop-window {
+    border-color: rgba(255, 255, 255, 0.08);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04)),
+      rgba(17, 20, 28, 0.72);
+    box-shadow:
+      0 26px 80px rgba(0, 0, 0, 0.36),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+
+  .toolbar-chip,
+  .desktop-segmented-control,
+  .desktop-window button,
+  .desktop-window input,
+  .desktop-window select,
+  .desktop-window textarea,
+  .activity-log-line,
+  .metric-tile,
+  .desktop-embedded-surface .accounts-table-wrap,
+  .desktop-embedded-surface .token-pool-table-wrap,
+  .desktop-embedded-surface .thread-cleanup-profile-card {
+    background-color: rgba(255, 255, 255, 0.04);
+    color: var(--mac-ink);
+  }
+
+  .desktop-segment.active {
+    background:
+      linear-gradient(180deg, rgba(76, 110, 188, 0.5), rgba(62, 90, 158, 0.32)),
+      rgba(255, 255, 255, 0.06);
+    color: #ffffff;
+  }
+
+  .surface-eyebrow {
+    color: #9ec7ff;
+    background: rgba(10, 132, 255, 0.16);
+  }
+
+  .desktop-window button.primary,
+  .desktop-window .primary {
+    background: linear-gradient(180deg, #3498ff, #0a84ff);
+  }
+
+  .desktop-window .warning {
+    color: #f3c87f;
+    background: rgba(217, 133, 24, 0.14);
+  }
+
+  .toolbar-chip-good,
+  .metric-tile-good {
+    background: rgba(47, 157, 98, 0.14);
+  }
+
+  .toolbar-chip-caution,
+  .metric-tile-caution {
+    background: rgba(217, 133, 24, 0.14);
+  }
+
+  .toolbar-chip-danger,
+  .metric-tile-danger {
+    background: rgba(207, 74, 74, 0.15);
   }
 }
