@@ -1,12 +1,12 @@
 # Codex Migration Extension Handoff
 
-最后更新：2026-04-16（扩展版本升到 1.0.3，重打 VSIX；桌面 app 版本暂保持 1.0.2）
+最后更新：2026-04-16（扩展版本升到 1.0.4，重打 VSIX；用量失败提示已收敛）
 
 ## 项目快照
 
 - 项目名：`codex-migration-extension`
 - 展示名：`Codex 迁移助手`
-- 当前版本：`1.0.3`
+- 当前版本：`1.0.4`
 - 形态：VS Code / Codex Webview 扩展
 - 技术栈：TypeScript、React、VS Code Webview、Node.js 20+
 - 目标：面向 Codex 用户的账号切换、数据迁移、备份恢复、会话清理与用量查看
@@ -286,9 +286,13 @@ token pool 已经不再按“直接改当前活动槽位 auth”理解，而是�
 
 本轮额外状态：
 
-- 根扩展版本已升到 `1.0.3`
-- `codex-migration-assistant-1.0.3.vsix` 已成功打出
+- 根扩展版本已升到 `1.0.4`
+- `codex-migration-assistant-1.0.4.vsix` 已成功打出
 - 包内 `dist/engine/usage.js` 已确认包含 `used_percent = 1` 不再按 `100%` 处理的修复逻辑
+- 用量刷新失败现在会优先归一化常见认证问题：
+  - `token_expired / 401` -> `登录态已过期，请切换到该账号重新登录后再刷新用量`
+  - 一般 `401/403` -> `登录态无效或权限不足，请重新登录后再刷新用量`
+- 账号管理列表底部的失败汇总也已改成按相同原因分组，不再直接拼接原始 URL 与 HTML 片段
 - 桌面端源码会一起提交，但其 manifest 版本暂保持 `1.0.2`
 - 桌面端单独版本迭代、`.dmg` 失败排查与发布，留到后续再做
 

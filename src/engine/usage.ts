@@ -27,6 +27,13 @@ type UsageApiResponse = {
   };
 };
 
+type UsageFetchFailure = {
+  url: string;
+  message: string;
+  status?: number;
+  body?: string;
+};
+
 export type ProfileUsageWindow = {
   usedPercent: number;
   remainingPercent: number;
@@ -269,7 +276,13 @@ async function fetchUsage(url: string, identity: AuthIdentity): Promise<UsageApi
 
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(`${response.status} ${response.statusText} ${text.slice(0, 160)}`.trim());
+      const error = new Error(`${response.status} ${response.statusText} ${text.slice(0, 160)}`.trim()) as Error & {
+        status?: number;
+        body?: string;
+      };
+      error.status = response.status;
+      error.body = text;
+      throw error;
     }
 
     return (await response.json()) as UsageApiResponse;
@@ -278,18 +291,57 @@ async function fetchUsage(url: string, identity: AuthIdentity): Promise<UsageApi
   }
 }
 
+function summarizeUsageFailures(errors: UsageFetchFailure[]): string {
+  const authExpired = errors.some((item) => {
+    const body = (item.body || item.message).toLowerCase();
+    return item.status === 401 && (body.includes("token_expired") || body.includes("authentication token is expired"));
+  });
+  if (authExpired) {
+    return "登录态已过期，请切换到该账号重新登录后再刷新用量";
+  }
+
+  const authRejected = errors.some((item) => {
+    const body = (item.body || item.message).toLowerCase();
+    return item.status === 401 || (item.status === 403 && (body.includes("forbidden") || body.includes("<html")));
+  });
+  if (authRejected) {
+    return "登录态无效或权限不足，请重新登录后再刷新用量";
+  }
+
+  const aborted = errors.some((item) => item.message.toLowerCase().includes("abort"));
+  if (aborted) {
+    return "用量查询超时，请稍后重试";
+  }
+
+  const unavailable = errors.some((item) => (item.status ?? 0) >= 500);
+  if (unavailable) {
+    return "用量接口暂时不可用，请稍后重试";
+  }
+
+  return errors
+    .slice(0, 2)
+    .map((item) => `${item.url} -> ${item.message}`)
+    .join(" | ");
+}
+
 export async function fetchUsageForIdentity(identity: AuthIdentity, baseUrl?: string): Promise<ProfileUsageSummary> {
   const urls = resolveUsageUrls(baseUrl);
-  const errors: string[] = [];
+  const errors: UsageFetchFailure[] = [];
   for (const url of urls) {
     try {
       const payload = await fetchUsage(url, identity);
       return mapUsagePayload(payload);
     } catch (error) {
-      errors.push(`${url} -> ${(error as Error).message}`);
+      const typed = error as Error & { status?: number; body?: string };
+      errors.push({
+        url,
+        message: typed.message,
+        status: typed.status,
+        body: typed.body
+      });
     }
   }
-  throw new Error(errors.slice(0, 3).join(" | "));
+  throw new Error(summarizeUsageFailures(errors));
 }
 
 export async function fetchProfileUsage(profilePath: string): Promise<ProfileUsageSummary> {

@@ -89,6 +89,30 @@ function computeCleanupSummary(preview?: ThreadCleanupPreviewResult): {
   };
 }
 
+function summarizeUsageErrors(profiles: ProfileSummary[]): string | undefined {
+  const items = profiles
+    .filter((item) => item.usageError)
+    .map((item) => ({
+      name: item.name,
+      error: item.usageError as string
+    }));
+
+  if (items.length === 0) {
+    return undefined;
+  }
+
+  const groups = new Map<string, string[]>();
+  for (const item of items) {
+    const names = groups.get(item.error) ?? [];
+    names.push(item.name);
+    groups.set(item.error, names);
+  }
+
+  return Array.from(groups.entries())
+    .map(([reason, names]) => `${names.join("、")}：${reason}`)
+    .join("；");
+}
+
 export function AccountsManager(props: Props): JSX.Element {
   const sectionMode = props.sectionMode ?? "all";
   const showTokenPool = sectionMode === "all" || sectionMode === "tokenPool";
@@ -118,6 +142,7 @@ export function AccountsManager(props: Props): JSX.Element {
   const refreshUsageRef = React.useRef(props.onRefreshUsage);
   const profilesCountRef = React.useRef(props.profiles.length);
   const cleanupSummary = useMemo(() => computeCleanupSummary(props.threadCleanupPreview), [props.threadCleanupPreview]);
+  const usageErrorSummary = useMemo(() => summarizeUsageErrors(props.profiles), [props.profiles]);
   const canPreviewCleanup =
     props.threadCleanupInput.trim().length > 0 &&
     (props.threadCleanupScope !== "single" || props.threadCleanupProfileId.trim().length > 0);
@@ -573,14 +598,10 @@ export function AccountsManager(props: Props): JSX.Element {
         </table>
       </div>
 
-      {props.profiles.some((item) => item.usageError)
+      {usageErrorSummary
         ? (
             <div className="warning">
-              最近一次用量刷新存在失败项：
-              {props.profiles
-                .filter((item) => item.usageError)
-                .map((item) => `${item.name}: ${item.usageError}`)
-                .join("；")}
+              最近一次用量刷新存在失败项：{usageErrorSummary}
             </div>
           )
         : null}

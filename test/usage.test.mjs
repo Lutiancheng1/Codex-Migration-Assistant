@@ -35,3 +35,46 @@ test("fetchUsageForIdentity keeps used_percent=1 as 1 percent instead of 100 per
     global.fetch = originalFetch;
   }
 });
+
+test("fetchUsageForIdentity normalizes expired auth failures to a concise message", async () => {
+  const originalFetch = global.fetch;
+
+  global.fetch = async (url) => {
+    if (String(url).includes("/backend-api/wham/usage")) {
+      return {
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        text: async () =>
+          JSON.stringify({
+            error: {
+              message: "Provided authentication token is expired. Please try signing in again.",
+              code: "token_expired"
+            }
+          })
+      };
+    }
+    return {
+      ok: false,
+      status: 403,
+      statusText: "Forbidden",
+      text: async () => "<html><head></head><body>Forbidden</body></html>"
+    };
+  };
+
+  try {
+    await assert.rejects(
+      () =>
+        fetchUsageForIdentity({
+          accessToken: "token",
+          accountId: "account"
+        }),
+      (error) => {
+        assert.equal(error.message, "登录态已过期，请切换到该账号重新登录后再刷新用量");
+        return true;
+      }
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
