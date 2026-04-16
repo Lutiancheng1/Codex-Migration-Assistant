@@ -1,0 +1,9 @@
+{
+  "name": "@codex-migration/shared-contracts",
+  "version": "1.0.2",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

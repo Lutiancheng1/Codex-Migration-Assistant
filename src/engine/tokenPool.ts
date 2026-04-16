@@ -1,4 +1,4 @@
-import * as vscode from "vscode";
+import type * as vscode from "vscode";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { statSafe } from "./fileTree";
@@ -22,6 +22,7 @@ import { resolveCodexHome } from "../util/path";
 import { resolveProfileAuthLabel } from "./authLabel";
 import { getLogger } from "../util/logger";
 import { detectExternalBusyProcesses, forceKillProcesses, relaunchKilledProcesses } from "./processGuard";
+import { deriveTokenPoolPaths } from "../util/sharedData";
 
 export type TokenPoolStatus = "neverChecked" | "available" | "exhausted" | "authInvalid" | "incomplete";
 
@@ -55,6 +56,8 @@ export type TokenPoolSnapshot = {
   lastAutoSwitchMessage?: string;
 };
 
+type LogLevel = "info" | "warn" | "error";
+
 type TokenPoolSecret = {
   accessToken: string;
   idToken: string;
@@ -68,8 +71,10 @@ type TokenPoolSecret = {
 };
 
 type TokenPoolEntryMeta = Omit<TokenPoolEntry, "current">;
+type TokenPoolSecretMap = Record<string, TokenPoolSecret>;
 
 type TokenPoolMetadata = {
+  schemaVersion: 1;
   version: 1;
   activeEntryId?: string;
   settings: TokenPoolSettings;
@@ -84,9 +89,51 @@ type ImportSummary = {
   skipped: number;
 };
 
-const META_KEY = "codexMigration.tokenPool.meta.v1";
-const SECRET_PREFIX = "codexMigration.tokenPool.secret.";
+type DisposableLike = {
+  dispose(): void;
+};
+
+type NotificationHost = {
+  info?(message: string): void;
+  warn?(message: string): void;
+};
+
+type LegacyTokenPoolStorage = {
+  readMeta(): TokenPoolMetadata | undefined;
+  readSecret(entryId: string): Promise<string | undefined>;
+};
+
+type TokenPoolServiceOptions = {
+  legacyStorage?: LegacyTokenPoolStorage;
+  notifications?: NotificationHost;
+};
+
+class SimpleEmitter<T> {
+  private readonly listeners = new Set<(value: T) => void>();
+
+  event(listener: (value: T) => void): DisposableLike {
+    this.listeners.add(listener);
+    return {
+      dispose: () => {
+        this.listeners.delete(listener);
+      }
+    };
+  }
+
+  fire(value: T): void {
+    for (const listener of this.listeners) {
+      listener(value);
+    }
+  }
+
+  dispose(): void {
+    this.listeners.clear();
+  }
+}
+
 const DEFAULT_INTERVAL = 5 * 60 * 1000;
+const LEGACY_META_KEY = "codexMigration.tokenPool.meta.v1";
+const LEGACY_SECRET_PREFIX = "codexMigration.tokenPool.secret.";
 
 type ImportableJson = Record<string, unknown>;
 
@@ -96,6 +143,7 @@ function nowIso(): string {
 
 function defaultMetadata(): TokenPoolMetadata {
   return {
+    schemaVersion: 1,
     version: 1,
     activeEntryId: undefined,
     settings: {
@@ -105,10 +153,6 @@ function defaultMetadata(): TokenPoolMetadata {
     },
     entries: []
   };
-}
-
-function secretKey(id: string): string {
-  return `${SECRET_PREFIX}${id}`;
 }
 
 function normalizeInterval(value: number): number {
@@ -197,6 +241,21 @@ async function readJsonFile(filePath: string): Promise<ImportableJson> {
   return JSON.parse(raw) as ImportableJson;
 }
 
+async function readJsonFileSafe<T>(filePath: string): Promise<T | undefined> {
+  try {
+    return JSON.parse(await fs.readFile(filePath, "utf8")) as T;
+  } catch {
+    return undefined;
+  }
+}
+
+async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  const tempPath = `${filePath}.tmp`;
+  await fs.writeFile(tempPath, JSON.stringify(value, null, 2), "utf8");
+  await fs.rename(tempPath, filePath);
+}
+
 async function resolveActiveProfilePath(codexHome: string): Promise<string> {
   const snapshot = await getProfilesSnapshot(codexHome);
   if (snapshot.activeProfileId) {
@@ -276,14 +335,14 @@ async function readChatgptBaseUrl(profilePath: string): Promise<string | undefin
   return undefined;
 }
 
-class TokenPoolService implements vscode.Disposable {
-  private readonly changeEmitter = new vscode.EventEmitter<void>();
-  private readonly logEmitter = new vscode.EventEmitter<{ level: "info" | "warn" | "error"; message: string }>();
+class TokenPoolService implements DisposableLike {
+  private readonly changeEmitter = new SimpleEmitter<void>();
+  private readonly logEmitter = new SimpleEmitter<{ level: LogLevel; message: string }>();
   private timer: NodeJS.Timeout | undefined;
   private tickRunning = false;
 
-  constructor(private readonly context: vscode.ExtensionContext) {
-    this.restartTimer();
+  constructor(private readonly options: TokenPoolServiceOptions = {}) {
+    void this.initializeFromStorage();
   }
 
   dispose(): void {
@@ -295,25 +354,63 @@ class TokenPoolService implements vscode.Disposable {
     this.logEmitter.dispose();
   }
 
-  onDidChange(listener: () => void): vscode.Disposable {
+  onDidChange(listener: () => void): DisposableLike {
     return this.changeEmitter.event(listener);
   }
 
-  onDidLog(listener: (payload: { level: "info" | "warn" | "error"; message: string }) => void): vscode.Disposable {
+  onDidLog(listener: (payload: { level: LogLevel; message: string }) => void): DisposableLike {
     return this.logEmitter.event(listener);
   }
 
-  private emitLog(level: "info" | "warn" | "error", message: string): void {
+  private emitLog(level: LogLevel, message: string): void {
     getLogger().appendLine(`[token-pool:${level}] ${message}`);
     this.logEmitter.fire({ level, message });
   }
 
-  private readMeta(): TokenPoolMetadata {
-    const raw = this.context.globalState.get<TokenPoolMetadata>(META_KEY);
-    if (!raw || raw.version !== 1 || !Array.isArray(raw.entries)) {
+  private async initializeFromStorage(): Promise<void> {
+    await this.migrateLegacyStorageIfNeeded();
+    this.restartTimer(await this.readMeta());
+  }
+
+  private async migrateLegacyStorageIfNeeded(): Promise<void> {
+    const codexHome = resolveCodexHome();
+    const paths = deriveTokenPoolPaths(codexHome);
+    const existing = await readJsonFileSafe<TokenPoolMetadata>(paths.metaPath);
+    if (existing?.version === 1) {
+      return;
+    }
+
+    const legacyMeta = this.options.legacyStorage?.readMeta();
+    if (!legacyMeta || legacyMeta.version !== 1 || !Array.isArray(legacyMeta.entries) || legacyMeta.entries.length === 0) {
+      return;
+    }
+
+    const secrets: TokenPoolSecretMap = {};
+    for (const entry of legacyMeta.entries) {
+      const raw = await this.options.legacyStorage?.readSecret(entry.id);
+      if (!raw) {
+        continue;
+      }
+      try {
+        secrets[entry.id] = JSON.parse(raw) as TokenPoolSecret;
+      } catch {
+        // ignore broken legacy secret payload
+      }
+    }
+
+    await writeJsonAtomic(paths.metaPath, legacyMeta);
+    await writeJsonAtomic(paths.secretsPath, secrets);
+    this.emitLog("info", "已将旧版账号池存储迁移到共享文件存储。");
+  }
+
+  private async readMeta(codexHomeOverride?: string): Promise<TokenPoolMetadata> {
+    const raw = await readJsonFileSafe<TokenPoolMetadata>(deriveTokenPoolPaths(resolveCodexHome(codexHomeOverride)).metaPath);
+    const version = raw?.schemaVersion ?? raw?.version;
+    if (!raw || version !== 1 || !Array.isArray(raw.entries)) {
       return defaultMetadata();
     }
     return {
+      schemaVersion: 1,
       version: 1,
       activeEntryId: raw.activeEntryId,
       settings: {
@@ -330,43 +427,47 @@ class TokenPoolService implements vscode.Disposable {
     };
   }
 
-  private async writeMeta(meta: TokenPoolMetadata): Promise<void> {
-    await this.context.globalState.update(META_KEY, meta);
+  private async writeMeta(meta: TokenPoolMetadata, codexHomeOverride?: string): Promise<void> {
+    await writeJsonAtomic(deriveTokenPoolPaths(resolveCodexHome(codexHomeOverride)).metaPath, meta);
     this.restartTimer(meta);
     this.changeEmitter.fire();
   }
 
-  private restartTimer(meta = this.readMeta()): void {
+  private restartTimer(meta?: TokenPoolMetadata): void {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = undefined;
     }
-    if (!meta.settings.autoSwitchEnabled || meta.settings.pollIntervalMs <= 0) {
+    const nextMeta = meta ?? defaultMetadata();
+    if (!nextMeta.settings.autoSwitchEnabled || nextMeta.settings.pollIntervalMs <= 0) {
       return;
     }
     this.timer = setInterval(() => {
       void this.runAutoSwitchTick();
-    }, meta.settings.pollIntervalMs);
+    }, nextMeta.settings.pollIntervalMs);
   }
 
-  private async readSecret(entryId: string): Promise<TokenPoolSecret | undefined> {
-    const raw = await this.context.secrets.get(secretKey(entryId));
-    if (!raw) {
-      return undefined;
-    }
-    try {
-      return JSON.parse(raw) as TokenPoolSecret;
-    } catch {
-      return undefined;
-    }
+  private async readSecrets(codexHomeOverride?: string): Promise<TokenPoolSecretMap> {
+    return (await readJsonFileSafe<TokenPoolSecretMap>(deriveTokenPoolPaths(resolveCodexHome(codexHomeOverride)).secretsPath)) ?? {};
   }
 
-  private async writeSecret(entryId: string, secret: TokenPoolSecret): Promise<void> {
-    await this.context.secrets.store(secretKey(entryId), JSON.stringify(secret));
+  private async readSecret(entryId: string, codexHomeOverride?: string): Promise<TokenPoolSecret | undefined> {
+    const map = await this.readSecrets(codexHomeOverride);
+    return map[entryId];
   }
 
-  private async deleteSecret(entryId: string): Promise<void> {
-    await this.context.secrets.delete(secretKey(entryId));
+  private async writeSecret(entryId: string, secret: TokenPoolSecret, codexHomeOverride?: string): Promise<void> {
+    const codexHome = resolveCodexHome(codexHomeOverride);
+    const map = await this.readSecrets(codexHome);
+    map[entryId] = secret;
+    await writeJsonAtomic(deriveTokenPoolPaths(codexHome).secretsPath, map);
+  }
+
+  private async deleteSecret(entryId: string, codexHomeOverride?: string): Promise<void> {
+    const codexHome = resolveCodexHome(codexHomeOverride);
+    const map = await this.readSecrets(codexHome);
+    delete map[entryId];
+    await writeJsonAtomic(deriveTokenPoolPaths(codexHome).secretsPath, map);
   }
 
   private async detectActiveEntryId(codexHome: string, meta: TokenPoolMetadata): Promise<string | undefined> {
@@ -381,7 +482,7 @@ class TokenPoolService implements vscode.Disposable {
 
   async getSnapshot(codexHomeOverride?: string): Promise<TokenPoolSnapshot> {
     const codexHome = resolveCodexHome(codexHomeOverride);
-    const meta = this.readMeta();
+    const meta = await this.readMeta(codexHome);
     const activeEntryId = await this.detectActiveEntryId(codexHome, meta);
     return {
       activeEntryId,
@@ -396,11 +497,12 @@ class TokenPoolService implements vscode.Disposable {
     };
   }
 
-  hasEntry(entryId: string): boolean {
-    return this.readMeta().entries.some((entry) => entry.id === entryId);
+  async hasEntry(entryId: string, codexHomeOverride?: string): Promise<boolean> {
+    const meta = await this.readMeta(codexHomeOverride);
+    return meta.entries.some((entry) => entry.id === entryId);
   }
 
-  private async upsertSecret(meta: TokenPoolMetadata, secret: TokenPoolSecret, overrides?: Partial<Pick<TokenPoolEntryMeta, "email" | "type" | "planTypeHint">>): Promise<"imported" | "replaced"> {
+  private async upsertSecret(meta: TokenPoolMetadata, secret: TokenPoolSecret, codexHomeOverride?: string, overrides?: Partial<Pick<TokenPoolEntryMeta, "email" | "type" | "planTypeHint">>): Promise<"imported" | "replaced"> {
     const duplicateIndex = meta.entries.findIndex((entry) => entry.accountId === secret.accountId || (!!secret.email && entry.email === secret.email));
     const nextMeta: TokenPoolEntryMeta = {
       id: duplicateIndex >= 0 ? meta.entries[duplicateIndex].id : `${secret.accountId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -416,7 +518,7 @@ class TokenPoolService implements vscode.Disposable {
       usageError: duplicateIndex >= 0 ? meta.entries[duplicateIndex].usageError : undefined,
       status: duplicateIndex >= 0 ? meta.entries[duplicateIndex].status : "neverChecked"
     };
-    await this.writeSecret(nextMeta.id, secret);
+    await this.writeSecret(nextMeta.id, secret, codexHomeOverride);
     if (duplicateIndex >= 0) {
       meta.entries.splice(duplicateIndex, 1, nextMeta);
       return "replaced";
@@ -425,35 +527,35 @@ class TokenPoolService implements vscode.Disposable {
     return "imported";
   }
 
-  async importFiles(filePaths: string[]): Promise<TokenPoolSnapshot> {
-    const meta = this.readMeta();
+  async importFiles(filePaths: string[], codexHomeOverride?: string): Promise<TokenPoolSnapshot> {
+    const meta = await this.readMeta(codexHomeOverride);
     const summary: ImportSummary = { imported: 0, replaced: 0, skipped: 0 };
 
     for (const filePath of filePaths) {
       try {
         const parsed = normalizeImportedToken(await readJsonFile(filePath));
-        const result = await this.upsertSecret(meta, parsed);
+        const result = await this.upsertSecret(meta, parsed, codexHomeOverride);
         summary[result] += 1;
       } catch {
         summary.skipped += 1;
       }
     }
 
-    await this.writeMeta(meta);
+    await this.writeMeta(meta, codexHomeOverride);
     this.emitLog("info", `账号池导入完成：新增 ${summary.imported}，覆盖 ${summary.replaced}，跳过 ${summary.skipped}。`);
-    return this.getSnapshot();
+    return this.getSnapshot(codexHomeOverride);
   }
 
-  async importDirectory(directoryPath: string): Promise<TokenPoolSnapshot> {
+  async importDirectory(directoryPath: string, codexHomeOverride?: string): Promise<TokenPoolSnapshot> {
     const entries = await fs.readdir(directoryPath, { withFileTypes: true });
     const files = entries
       .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".json"))
       .map((entry) => path.join(directoryPath, entry.name));
-    return this.importFiles(files);
+    return this.importFiles(files, codexHomeOverride);
   }
 
 
-  async importProfileAuth(profilePath: string): Promise<TokenPoolSnapshot> {
+  async importProfileAuth(profilePath: string, codexHomeOverride?: string): Promise<TokenPoolSnapshot> {
     const authPath = path.join(profilePath, "auth.json");
     const st = await statSafe(authPath);
     if (!st?.isFile()) {
@@ -464,15 +566,15 @@ class TokenPoolService implements vscode.Disposable {
     const parsed = normalizeImportedToken(raw);
     parsed.email = parsed.email ?? (await resolveProfileAuthLabel(profilePath)) ?? parsed.email;
 
-    const meta = this.readMeta();
-    const result = await this.upsertSecret(meta, parsed);
-    await this.writeMeta(meta);
+    const meta = await this.readMeta(codexHomeOverride);
+    const result = await this.upsertSecret(meta, parsed, codexHomeOverride);
+    await this.writeMeta(meta, codexHomeOverride);
     this.emitLog("info", `已将 ${parsed.email || parsed.accountId} 的登录态导入到账号池（${result === "replaced" ? "覆盖旧条目" : "新增条目"}）。`);
-    return this.getSnapshot();
+    return this.getSnapshot(codexHomeOverride);
   }
 
   private async refreshUsageForMeta(meta: TokenPoolEntryMeta, codexHomeOverride?: string): Promise<TokenPoolEntryMeta> {
-    const secret = await this.readSecret(meta.id);
+    const secret = await this.readSecret(meta.id, codexHomeOverride);
     if (!secret) {
       return {
         ...meta,
@@ -511,74 +613,74 @@ class TokenPoolService implements vscode.Disposable {
   }
 
   async refreshEntryUsage(entryId: string, codexHomeOverride?: string): Promise<TokenPoolSnapshot> {
-    const meta = this.readMeta();
+    const meta = await this.readMeta(codexHomeOverride);
     const index = meta.entries.findIndex((entry) => entry.id === entryId);
     if (index < 0) {
       throw new Error("未找到账号池条目。");
     }
     meta.entries[index] = await this.refreshUsageForMeta(meta.entries[index], codexHomeOverride);
-    await this.writeMeta(meta);
+    await this.writeMeta(meta, codexHomeOverride);
     const item = meta.entries[index];
     this.emitLog("info", `已刷新账号池条目 ${item.email || item.accountId} 的额度。`);
     return this.getSnapshot(codexHomeOverride);
   }
 
-  async setSettings(settings: Partial<TokenPoolSettings>): Promise<TokenPoolSnapshot> {
-    const meta = this.readMeta();
+  async setSettings(settings: Partial<TokenPoolSettings>, codexHomeOverride?: string): Promise<TokenPoolSnapshot> {
+    const meta = await this.readMeta(codexHomeOverride);
     meta.settings = {
       autoSwitchEnabled: settings.autoSwitchEnabled ?? meta.settings.autoSwitchEnabled,
       pollIntervalMs: normalizeInterval(settings.pollIntervalMs ?? meta.settings.pollIntervalMs),
       autoRelaunchAfterSwitch: settings.autoRelaunchAfterSwitch ?? meta.settings.autoRelaunchAfterSwitch
     };
-    await this.writeMeta(meta);
+    await this.writeMeta(meta, codexHomeOverride);
     this.emitLog(
       "info",
       `账号池自动切换已${meta.settings.autoSwitchEnabled ? "开启" : "关闭"}，检测间隔 ${meta.settings.pollIntervalMs === 0 ? "禁用" : `${meta.settings.pollIntervalMs / 60000} 分钟`}，切换后${meta.settings.autoRelaunchAfterSwitch ? "自动重启 Codex" : "手动重启生效"}。`
     );
-    return this.getSnapshot();
+    return this.getSnapshot(codexHomeOverride);
   }
 
-  async deleteEntry(entryId: string): Promise<TokenPoolSnapshot> {
-    const meta = this.readMeta();
+  async deleteEntry(entryId: string, codexHomeOverride?: string): Promise<TokenPoolSnapshot> {
+    const meta = await this.readMeta(codexHomeOverride);
     const target = meta.entries.find((entry) => entry.id === entryId);
     meta.entries = meta.entries.filter((entry) => entry.id !== entryId);
     if (meta.activeEntryId === entryId) {
       meta.activeEntryId = undefined;
     }
-    await this.deleteSecret(entryId);
-    await this.writeMeta(meta);
+    await this.deleteSecret(entryId, codexHomeOverride);
+    await this.writeMeta(meta, codexHomeOverride);
     if (target) {
       this.emitLog("info", `已删除账号池条目: ${target.email || target.accountId}`);
     }
-    return this.getSnapshot();
+    return this.getSnapshot(codexHomeOverride);
   }
 
-  async moveEntry(entryId: string, direction: "up" | "down"): Promise<TokenPoolSnapshot> {
-    const meta = this.readMeta();
+  async moveEntry(entryId: string, direction: "up" | "down", codexHomeOverride?: string): Promise<TokenPoolSnapshot> {
+    const meta = await this.readMeta(codexHomeOverride);
     const index = meta.entries.findIndex((entry) => entry.id === entryId);
     if (index < 0) {
       throw new Error("未找到账号池条目。");
     }
     const targetIndex = direction === "up" ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= meta.entries.length) {
-      return this.getSnapshot();
+      return this.getSnapshot(codexHomeOverride);
     }
     const [item] = meta.entries.splice(index, 1);
     meta.entries.splice(targetIndex, 0, item);
-    await this.writeMeta(meta);
-    return this.getSnapshot();
+    await this.writeMeta(meta, codexHomeOverride);
+    return this.getSnapshot(codexHomeOverride);
   }
 
-  async reorderEntries(orderedIds: string[]): Promise<TokenPoolSnapshot> {
-    const meta = this.readMeta();
+  async reorderEntries(orderedIds: string[], codexHomeOverride?: string): Promise<TokenPoolSnapshot> {
+    const meta = await this.readMeta(codexHomeOverride);
     const current = new Map(meta.entries.map((entry) => [entry.id, entry]));
     const seen = new Set<string>();
     const normalized = orderedIds.filter((id) => current.has(id) && !seen.has(id) && seen.add(id));
     const remainder = meta.entries.map((entry) => entry.id).filter((id) => !seen.has(id));
     const finalIds = [...normalized, ...remainder];
     meta.entries = finalIds.map((id) => current.get(id)).filter((entry): entry is TokenPoolEntryMeta => !!entry);
-    await this.writeMeta(meta);
-    return this.getSnapshot();
+    await this.writeMeta(meta, codexHomeOverride);
+    return this.getSnapshot(codexHomeOverride);
   }
 
   private async writePatchedAuthJson(profilePath: string, secret: TokenPoolSecret): Promise<void> {
@@ -603,7 +705,7 @@ class TokenPoolService implements vscode.Disposable {
   }
 
   private async maybeRelaunchCodex(codexHome: string, reason: "manual" | "auto"): Promise<void> {
-    const meta = this.readMeta();
+    const meta = await this.readMeta(codexHome);
     if (!meta.settings.autoRelaunchAfterSwitch) {
       this.emitLog("warn", "账号池已写入 pool-runner 登录态。若当前正在使用 pool-runner，请手动重启 Codex 或执行 Reload Window 使其生效。");
       return;
@@ -640,12 +742,12 @@ class TokenPoolService implements vscode.Disposable {
   }
 
   async activateEntry(entryId: string, codexHomeOverride?: string, reason: "manual" | "auto" = "manual"): Promise<TokenPoolSnapshot> {
-    const meta = this.readMeta();
+    const meta = await this.readMeta(codexHomeOverride);
     const initialIndex = meta.entries.findIndex((item) => item.id === entryId);
     if (initialIndex < 0) {
       throw new Error("未找到账号池条目。");
     }
-    const secret = await this.readSecret(entryId);
+    const secret = await this.readSecret(entryId, codexHomeOverride);
     if (!secret) {
       throw new Error("账号池条目缺少敏感 token 数据。");
     }
@@ -663,7 +765,7 @@ class TokenPoolService implements vscode.Disposable {
       this.emitLog("info", `手动切换前正在校验账号池条目额度: ${entry.email || entry.accountId}`);
       meta.entries[initialIndex] = await this.refreshUsageForMeta(meta.entries[initialIndex], codexHome);
       entry = meta.entries[initialIndex];
-      await this.writeMeta(meta);
+      await this.writeMeta(meta, codexHome);
 
       if (entry.status === "exhausted") {
         throw new Error(`账号 ${entry.email || entry.accountId} 当前额度已用尽，已阻止手动切换。`);
@@ -683,7 +785,7 @@ class TokenPoolService implements vscode.Disposable {
       meta.lastAutoSwitchAt = nowIso();
       meta.lastAutoSwitchMessage = `已自动切换到 ${entry.email || entry.accountId}`;
     }
-    await this.writeMeta(meta);
+    await this.writeMeta(meta, codexHome);
     this.emitLog(
       "info",
       reason === "auto"
@@ -692,7 +794,7 @@ class TokenPoolService implements vscode.Disposable {
     );
     await this.maybeRelaunchCodex(codexHome, reason);
     if (reason === "auto") {
-      void vscode.window.showInformationMessage(`Codex 账号池已自动切换到 ${entry.email || entry.accountId}`);
+      this.options.notifications?.info?.(`Codex 账号池已自动切换到 ${entry.email || entry.accountId}`);
     }
     return this.getSnapshot(codexHomeOverride);
   }
@@ -715,7 +817,7 @@ class TokenPoolService implements vscode.Disposable {
     this.tickRunning = true;
     try {
       const codexHome = resolveCodexHome();
-      const meta = this.readMeta();
+      const meta = await this.readMeta(codexHome);
       if (!meta.settings.autoSwitchEnabled || meta.settings.pollIntervalMs <= 0 || meta.entries.length === 0) {
         return;
       }
@@ -737,7 +839,7 @@ class TokenPoolService implements vscode.Disposable {
 
       meta.entries[currentIndex] = await this.refreshUsageForMeta(meta.entries[currentIndex], codexHome);
       if (isAvailableForSwitch(meta.entries[currentIndex])) {
-        await this.writeMeta(meta);
+        await this.writeMeta(meta, codexHome);
         return;
       }
 
@@ -749,7 +851,7 @@ class TokenPoolService implements vscode.Disposable {
         }
         meta.entries[candidateIndex] = await this.refreshUsageForMeta(meta.entries[candidateIndex], codexHome);
         if (isAvailableForSwitch(meta.entries[candidateIndex])) {
-          await this.writeMeta(meta);
+          await this.writeMeta(meta, codexHome);
           await this.activateEntry(meta.entries[candidateIndex].id, codexHome, "auto");
           return;
         }
@@ -757,9 +859,9 @@ class TokenPoolService implements vscode.Disposable {
 
       meta.lastAutoSwitchAt = nowIso();
       meta.lastAutoSwitchMessage = "账号池没有可用账号，已停止自动切换。";
-      await this.writeMeta(meta);
+      await this.writeMeta(meta, codexHome);
       this.emitLog("warn", meta.lastAutoSwitchMessage);
-      void vscode.window.showWarningMessage(meta.lastAutoSwitchMessage);
+      this.options.notifications?.warn?.(meta.lastAutoSwitchMessage);
     } catch (error) {
       this.emitLog("error", `账号池自动切换检测失败: ${(error as Error).message}`);
     } finally {
@@ -770,9 +872,22 @@ class TokenPoolService implements vscode.Disposable {
 
 let service: TokenPoolService | undefined;
 
-export function initializeTokenPoolService(context: vscode.ExtensionContext): vscode.Disposable {
+export function initializeTokenPoolService(context: vscode.ExtensionContext, notifications?: NotificationHost): DisposableLike {
   if (!service) {
-    service = new TokenPoolService(context);
+    service = new TokenPoolService({
+      legacyStorage: {
+        readMeta: () => context.globalState.get<TokenPoolMetadata>(LEGACY_META_KEY),
+        readSecret: (entryId) => Promise.resolve(context.secrets.get(`${LEGACY_SECRET_PREFIX}${entryId}`))
+      },
+      notifications
+    });
+  }
+  return service;
+}
+
+export function initializeDesktopTokenPoolService(notifications?: NotificationHost): DisposableLike {
+  if (!service) {
+    service = new TokenPoolService({ notifications });
   }
   return service;
 }

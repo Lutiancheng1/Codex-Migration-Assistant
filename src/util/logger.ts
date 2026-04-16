@@ -1,10 +1,34 @@
-import * as vscode from "vscode";
+import type * as vscode from "vscode";
 
-let channel: vscode.OutputChannel | undefined;
+type LoggerLike = {
+  appendLine(message: string): void;
+  dispose(): void;
+};
 
-export function getLogger(): vscode.OutputChannel {
-  if (!channel) {
-    channel = vscode.window.createOutputChannel("Codex Migration Assistant");
+let channel: LoggerLike | undefined;
+
+function createConsoleLogger(): LoggerLike {
+  return {
+    appendLine(message: string) {
+      console.log(`[Codex Migration Assistant] ${message}`);
+    },
+    dispose() {
+      // no-op for desktop/CLI fallback
+    }
+  };
+}
+
+export function getLogger(): LoggerLike {
+  if (channel) {
+    return channel;
   }
-  return channel;
+
+  try {
+    const runtime = require("vscode") as typeof vscode;
+    channel = runtime.window.createOutputChannel("Codex Migration Assistant");
+    return channel;
+  } catch {
+    channel = createConsoleLogger();
+    return channel;
+  }
 }

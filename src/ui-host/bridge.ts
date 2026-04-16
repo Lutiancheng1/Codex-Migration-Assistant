@@ -28,6 +28,7 @@ import { requestSchema } from "../protocol/schema";
 import { resolveAndValidateCodexHome } from "../engine/codexHome";
 import { resolveCodexHome } from "../util/path";
 import { getLogger } from "../util/logger";
+import { withSharedWriteLock } from "../util/sharedLock";
 
 function send(webview: vscode.Webview, message: ResponseMessage): void {
   void webview.postMessage(message);
@@ -284,6 +285,135 @@ type WebviewTarget = { webview: vscode.Webview };
 let emittedUninitializedHint = false;
 let pendingRelaunchCommands: string[] = [];
 let pendingActivateAfterKill: Extract<RequestMessage, { type: "ACTIVATE_PROFILE" }> | undefined;
+const THREAD_CLEANUP_PENDING_FILE = ".thread-cleanup-pending.json";
+
+type PendingThreadCleanupTask = {
+  schemaVersion: 1;
+  createdAt: string;
+  codexHome: string;
+  threadIds: string[];
+  scope: "all" | "active" | "single";
+  profileId?: string;
+  backupEnabled: boolean;
+};
+
+function resolveThreadCleanupPendingPath(codexHome: string): string {
+  const resolved = path.resolve(codexHome);
+  const profilesRoot = path.join(path.dirname(resolved), `${path.basename(resolved)}-profiles`);
+  return path.join(profilesRoot, THREAD_CLEANUP_PENDING_FILE);
+}
+
+async function readPendingThreadCleanup(codexHome: string): Promise<PendingThreadCleanupTask | undefined> {
+  const pendingPath = resolveThreadCleanupPendingPath(codexHome);
+  try {
+    const raw = await fs.readFile(pendingPath, "utf8");
+    const parsed = JSON.parse(raw) as Partial<PendingThreadCleanupTask>;
+    if (!parsed || typeof parsed !== "object") {
+      return undefined;
+    }
+    if (!Array.isArray(parsed.threadIds) || parsed.threadIds.length === 0) {
+      return undefined;
+    }
+    if (typeof parsed.codexHome !== "string" || parsed.codexHome.trim().length === 0) {
+      return undefined;
+    }
+    if (parsed.scope !== "all" && parsed.scope !== "active" && parsed.scope !== "single") {
+      return undefined;
+    }
+    return {
+      schemaVersion: 1,
+      createdAt: typeof parsed.createdAt === "string" ? parsed.createdAt : new Date().toISOString(),
+      codexHome: parsed.codexHome,
+      threadIds: parsed.threadIds,
+      scope: parsed.scope,
+      profileId: typeof parsed.profileId === "string" ? parsed.profileId : undefined,
+      backupEnabled: !!parsed.backupEnabled
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+async function writePendingThreadCleanup(task: PendingThreadCleanupTask): Promise<void> {
+  const pendingPath = resolveThreadCleanupPendingPath(task.codexHome);
+  await fs.mkdir(path.dirname(pendingPath), { recursive: true });
+  const tempPath = `${pendingPath}.tmp`;
+  await fs.writeFile(
+    tempPath,
+    JSON.stringify(
+      {
+        ...task,
+        schemaVersion: 1
+      },
+      null,
+      2
+    ),
+    "utf8"
+  );
+  await fs.rename(tempPath, pendingPath);
+}
+
+async function clearPendingThreadCleanup(codexHome: string): Promise<void> {
+  await fs.rm(resolveThreadCleanupPendingPath(codexHome), { force: true });
+}
+
+function collectThreadCleanupCommands(result: Awaited<ReturnType<typeof executeThreadCleanup>>): string[] {
+  const dedup = new Set<string>();
+  for (const profile of result.profiles) {
+    for (const busy of profile.busyProcesses) {
+      const command = busy.command.trim();
+      if (command.length > 0) {
+        dedup.add(command);
+      }
+    }
+  }
+  return [...dedup.values()];
+}
+
+async function maybeResumePendingThreadCleanup(target: WebviewTarget, codexHome: string): Promise<void> {
+  const pending = await readPendingThreadCleanup(codexHome);
+  if (!pending) {
+    return;
+  }
+  try {
+    emitTaskLog(target.webview, "info", `检测到待补做的对话清理任务，正在检查是否可继续执行...`);
+    const preview = await previewThreadCleanup({
+      codexHome: pending.codexHome,
+      threadIds: pending.threadIds,
+      scope: pending.scope,
+      profileId: pending.profileId
+    });
+
+    const blockedProfiles = preview.profiles.filter((item) => item.matches.length > 0 && item.potentialBusyProcesses.length > 0);
+    if (blockedProfiles.length > 0) {
+      emitTaskLog(target.webview, "warn", `待补做清理仍有 ${blockedProfiles.length} 个账号被占用，暂不继续执行。`);
+      return;
+    }
+
+    const result = await withSharedWriteLock(pending.codexHome, "vscode-extension", () =>
+      executeThreadCleanup({
+        codexHome: pending.codexHome,
+        threadIds: pending.threadIds,
+        scope: pending.scope,
+        profileId: pending.profileId,
+        backupEnabled: pending.backupEnabled,
+        applyMode: "restartLater",
+        onLog: (message) => emitTaskLog(target.webview, "info", message)
+      })
+    );
+
+    if (result.profiles.some((item) => item.locked)) {
+      emitTaskLog(target.webview, "warn", "待补做清理仍未完成，相关账号仍被占用。");
+      return;
+    }
+
+    await clearPendingThreadCleanup(codexHome);
+    emitTaskLog(target.webview, "info", "已自动完成上次登记的对话清理任务。");
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    emitTaskLog(target.webview, "error", `待补做清理执行失败: ${reason}`);
+  }
+}
 
 function rememberActivateAfterKill(
   codexHome: string,
@@ -418,7 +548,7 @@ async function runActivateProfileRequest(target: WebviewTarget, msg: Extract<Req
   emitTaskLog(target.webview, "warn", "账号已切换。请重启 Codex App 或执行 Reload Window 以加载新账号会话。");
 }
 
-async function importTokenPoolFiles(webview: vscode.Webview, mode: "single" | "multiple"): Promise<void> {
+async function importTokenPoolFiles(webview: vscode.Webview, codexHome: string, mode: "single" | "multiple"): Promise<void> {
   const picked = await vscode.window.showOpenDialog({
     title: mode === "single" ? "选择 token JSON" : "选择多个 token JSON",
     canSelectMany: mode === "multiple",
@@ -431,11 +561,14 @@ async function importTokenPoolFiles(webview: vscode.Webview, mode: "single" | "m
   if (!picked || picked.length === 0) {
     return;
   }
-  await getTokenPoolService().importFiles(picked.map((item) => item.fsPath));
+  await getTokenPoolService().importFiles(
+    picked.map((item) => item.fsPath),
+    codexHome
+  );
   emitTaskLog(webview, "info", `账号池已导入 ${picked.length} 个 JSON 文件。`);
 }
 
-async function importTokenPoolDirectory(webview: vscode.Webview): Promise<void> {
+async function importTokenPoolDirectory(webview: vscode.Webview, codexHome: string): Promise<void> {
   const picked = await vscode.window.showOpenDialog({
     title: "选择 token 目录",
     canSelectMany: false,
@@ -446,7 +579,7 @@ async function importTokenPoolDirectory(webview: vscode.Webview): Promise<void> 
   if (!targetDir) {
     return;
   }
-  await getTokenPoolService().importDirectory(targetDir);
+  await getTokenPoolService().importDirectory(targetDir, codexHome);
   emitTaskLog(webview, "info", `账号池已导入目录中的 JSON：${targetDir}`);
 }
 
@@ -459,6 +592,11 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
     const resolved = resolveCodexHome(codexHomeOverride);
     preferredCodexHome = resolved;
     return resolved;
+  }
+
+  async function withWriteAccess<T>(codexHomeOverride: string | undefined, action: (codexHome: string) => Promise<T>): Promise<T> {
+    const codexHome = rememberCodexHome(codexHomeOverride);
+    return withSharedWriteLock(codexHome, "vscode-extension", () => action(codexHome));
   }
 
   function scheduleStateSnapshot(codexHomeOverride?: string): void {
@@ -493,99 +631,103 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
 
     try {
       if (msg.type === "INIT") {
-        await emitStateSnapshot(target.webview, rememberCodexHome());
+        const codexHome = rememberCodexHome();
+        await maybeResumePendingThreadCleanup(target, codexHome);
+        await emitStateSnapshot(target.webview, codexHome);
         return;
       }
 
       if (msg.type === "REFRESH_PROFILES") {
-        await emitStateSnapshot(target.webview, rememberCodexHome(msg.payload?.codexHome));
+        const codexHome = rememberCodexHome(msg.payload?.codexHome);
+        await maybeResumePendingThreadCleanup(target, codexHome);
+        await emitStateSnapshot(target.webview, codexHome);
         return;
       }
 
       if (msg.type === "IMPORT_TOKEN_POOL_FILES") {
-        await importTokenPoolFiles(target.webview, msg.payload.mode);
+        await withWriteAccess(undefined, (codexHome) => importTokenPoolFiles(target.webview, codexHome, msg.payload.mode));
         return;
       }
 
       if (msg.type === "IMPORT_TOKEN_POOL_DIRECTORY") {
-        await importTokenPoolDirectory(target.webview);
+        await withWriteAccess(undefined, (codexHome) => importTokenPoolDirectory(target.webview, codexHome));
         return;
       }
 
       if (msg.type === "IMPORT_PROFILE_TO_TOKEN_POOL") {
-        const codexHome = resolveCodexHome(msg.payload.codexHome);
-        rememberCodexHome(codexHome);
-        const snapshot = await getProfilesSnapshot(codexHome);
-        const profile = snapshot.profiles.find((item) => item.id === msg.payload.profileId && item.exists);
-        if (!profile) {
-          throw new Error(`未找到可导入的账号槽位: ${msg.payload.profileId}`);
-        }
-        if (!profile.hasAuth) {
-          throw new Error(`账号槽位 ${profile.name} 未检测到 auth.json，无法导入到账号池。`);
-        }
-        await tokenPoolService.importProfileAuth(profile.path);
-        emitTaskLog(target.webview, "info", `已将账号槽位 ${profile.name} 的登录态导入到账号池。`);
+        await withWriteAccess(msg.payload.codexHome, async (codexHome) => {
+          const snapshot = await getProfilesSnapshot(codexHome);
+          const profile = snapshot.profiles.find((item) => item.id === msg.payload.profileId && item.exists);
+          if (!profile) {
+            throw new Error(`未找到可导入的账号槽位: ${msg.payload.profileId}`);
+          }
+          if (!profile.hasAuth) {
+            throw new Error(`账号槽位 ${profile.name} 未检测到 auth.json，无法导入到账号池。`);
+          }
+          await tokenPoolService.importProfileAuth(profile.path, codexHome);
+          emitTaskLog(target.webview, "info", `已将账号槽位 ${profile.name} 的登录态导入到账号池。`);
+        });
         return;
       }
 
       if (msg.type === "SYNC_CURRENT_TO_POOL_RUNNER") {
-        const codexHome = resolveCodexHome(msg.payload?.codexHome);
-        rememberCodexHome(codexHome);
-        const snapshot = await syncCurrentCoreToProfile(codexHome, POOL_RUNNER_PROFILE_ID, POOL_RUNNER_PROFILE_NAME);
-        await emitSnapshot(target.webview, snapshot);
-        emitTaskLog(target.webview, "info", "已同步当前记录到 pool-runner。账号池后续只会操作该专用槽位。");
+        await withWriteAccess(msg.payload?.codexHome, async (codexHome) => {
+          const snapshot = await syncCurrentCoreToProfile(codexHome, POOL_RUNNER_PROFILE_ID, POOL_RUNNER_PROFILE_NAME);
+          await emitSnapshot(target.webview, snapshot);
+          emitTaskLog(target.webview, "info", "已同步当前记录到 pool-runner。账号池后续只会操作该专用槽位。");
+        });
         return;
       }
 
       if (msg.type === "SWITCH_TO_POOL_RUNNER") {
-        const codexHome = resolveCodexHome(msg.payload?.codexHome);
-        rememberCodexHome(codexHome);
-        const before = await getProfilesSnapshot(codexHome);
-        const hasPoolRunner = before.profiles.some((item) => item.id === POOL_RUNNER_PROFILE_ID && item.exists);
-        if (!hasPoolRunner) {
-          const synced = await syncCurrentCoreToProfile(codexHome, POOL_RUNNER_PROFILE_ID, POOL_RUNNER_PROFILE_NAME);
-          await emitSnapshot(target.webview, synced);
-          emitTaskLog(target.webview, "info", "未检测到 pool-runner，已先同步当前记录到该专用槽位。");
-        }
-        await runActivateProfileRequest(target, {
-          type: "ACTIVATE_PROFILE",
-          payload: {
-            codexHome,
-            profileId: POOL_RUNNER_PROFILE_ID,
-            backupCurrent: !!msg.payload?.backupCurrent,
-            switchMode: "plain"
+        await withWriteAccess(msg.payload?.codexHome, async (codexHome) => {
+          const before = await getProfilesSnapshot(codexHome);
+          const hasPoolRunner = before.profiles.some((item) => item.id === POOL_RUNNER_PROFILE_ID && item.exists);
+          if (!hasPoolRunner) {
+            const synced = await syncCurrentCoreToProfile(codexHome, POOL_RUNNER_PROFILE_ID, POOL_RUNNER_PROFILE_NAME);
+            await emitSnapshot(target.webview, synced);
+            emitTaskLog(target.webview, "info", "未检测到 pool-runner，已先同步当前记录到该专用槽位。");
           }
+          await runActivateProfileRequest(target, {
+            type: "ACTIVATE_PROFILE",
+            payload: {
+              codexHome,
+              profileId: POOL_RUNNER_PROFILE_ID,
+              backupCurrent: !!msg.payload?.backupCurrent,
+              switchMode: "plain"
+            }
+          });
         });
         return;
       }
 
       if (msg.type === "REFRESH_TOKEN_POOL_ENTRY_USAGE") {
-        await tokenPoolService.refreshEntryUsage(msg.payload.entryId, msg.payload.codexHome);
+        await withWriteAccess(msg.payload.codexHome, (codexHome) => tokenPoolService.refreshEntryUsage(msg.payload.entryId, codexHome));
         return;
       }
 
       if (msg.type === "ACTIVATE_TOKEN_POOL_ENTRY") {
-        await tokenPoolService.activateEntry(msg.payload.entryId, msg.payload.codexHome, "manual");
+        await withWriteAccess(msg.payload.codexHome, (codexHome) => tokenPoolService.activateEntry(msg.payload.entryId, codexHome, "manual"));
         return;
       }
 
       if (msg.type === "DELETE_TOKEN_POOL_ENTRY") {
-        await tokenPoolService.deleteEntry(msg.payload.entryId);
+        await withWriteAccess(undefined, (codexHome) => tokenPoolService.deleteEntry(msg.payload.entryId, codexHome));
         return;
       }
 
       if (msg.type === "MOVE_TOKEN_POOL_ENTRY") {
-        await tokenPoolService.moveEntry(msg.payload.entryId, msg.payload.direction);
+        await withWriteAccess(undefined, (codexHome) => tokenPoolService.moveEntry(msg.payload.entryId, msg.payload.direction, codexHome));
         return;
       }
 
       if (msg.type === "REORDER_TOKEN_POOL_ENTRIES") {
-        await tokenPoolService.reorderEntries(msg.payload.orderedIds);
+        await withWriteAccess(undefined, (codexHome) => tokenPoolService.reorderEntries(msg.payload.orderedIds, codexHome));
         return;
       }
 
       if (msg.type === "SET_TOKEN_POOL_SETTINGS") {
-        await tokenPoolService.setSettings(msg.payload);
+        await withWriteAccess(undefined, (codexHome) => tokenPoolService.setSettings(msg.payload, codexHome));
         return;
       }
 
@@ -598,10 +740,10 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
       }
 
       if (msg.type === "CREATE_PROFILE") {
-        const codexHome = resolveCodexHome(msg.payload.codexHome);
-        rememberCodexHome(codexHome);
-        const snapshot = await createProfile(codexHome, msg.payload.name);
-        await emitSnapshot(target.webview, snapshot);
+        await withWriteAccess(msg.payload.codexHome, async (codexHome) => {
+          const snapshot = await createProfile(codexHome, msg.payload.name);
+          await emitSnapshot(target.webview, snapshot);
+        });
         return;
       }
 
@@ -612,18 +754,18 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
       }
 
       if (msg.type === "DELETE_PROFILE") {
-        const codexHome = resolveCodexHome(msg.payload.codexHome);
-        rememberCodexHome(codexHome);
-        const snapshot = await deleteProfile(codexHome, msg.payload.profileId);
-        await emitSnapshot(target.webview, snapshot);
+        await withWriteAccess(msg.payload.codexHome, async (codexHome) => {
+          const snapshot = await deleteProfile(codexHome, msg.payload.profileId);
+          await emitSnapshot(target.webview, snapshot);
+        });
         return;
       }
 
       if (msg.type === "REORDER_PROFILES") {
-        const codexHome = resolveCodexHome(msg.payload.codexHome);
-        rememberCodexHome(codexHome);
-        const snapshot = await reorderProfiles(codexHome, msg.payload.orderedIds);
-        await emitSnapshot(target.webview, snapshot);
+        await withWriteAccess(msg.payload.codexHome, async (codexHome) => {
+          const snapshot = await reorderProfiles(codexHome, msg.payload.orderedIds);
+          await emitSnapshot(target.webview, snapshot);
+        });
         return;
       }
 
@@ -791,68 +933,70 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
       }
 
       if (msg.type === "START_IMPORT") {
-        const codexHome = path.resolve(resolveCodexHome(msg.payload.codexHome));
-        rememberCodexHome(codexHome);
-        emitTaskLog(target.webview, "info", `开始导入（模式=${msg.payload.mode}）`);
-        emitTaskLog(target.webview, "info", `目标 Codex 目录: ${codexHome}`);
-        emitTaskLog(target.webview, "info", `备份 ZIP: ${path.resolve(msg.payload.backupZip)}`);
-        send(target.webview, { type: "TASK_PROGRESS", payload: { step: "import", percent: 10, message: "准备导入" } });
-        const result = await runImport({
-          codexHome,
-          backupZip: msg.payload.backupZip,
-          replaceState: msg.payload.replaceState,
-          importAuth: msg.payload.importAuth,
-          mode: msg.payload.mode
+        await withWriteAccess(msg.payload.codexHome, async (codexHomeRaw) => {
+          const codexHome = path.resolve(codexHomeRaw);
+          emitTaskLog(target.webview, "info", `开始导入（模式=${msg.payload.mode}）`);
+          emitTaskLog(target.webview, "info", `目标 Codex 目录: ${codexHome}`);
+          emitTaskLog(target.webview, "info", `备份 ZIP: ${path.resolve(msg.payload.backupZip)}`);
+          send(target.webview, { type: "TASK_PROGRESS", payload: { step: "import", percent: 10, message: "准备导入" } });
+          const result = await runImport({
+            codexHome,
+            backupZip: msg.payload.backupZip,
+            replaceState: msg.payload.replaceState,
+            importAuth: msg.payload.importAuth,
+            mode: msg.payload.mode
+          });
+          await writeReportBundle(result.reportPath, result);
+          send(target.webview, { type: "TASK_PROGRESS", payload: { step: "import", percent: 100, message: "导入完成" } });
+          send(target.webview, { type: "TASK_RESULT", payload: { action: "import", data: result } });
+          for (const warning of result.warnings) {
+            emitTaskLog(target.webview, "warn", warning);
+          }
+          emitTaskLog(target.webview, "info", `导入报告: ${result.reportPath}`);
         });
-        await writeReportBundle(result.reportPath, result);
-        send(target.webview, { type: "TASK_PROGRESS", payload: { step: "import", percent: 100, message: "导入完成" } });
-        send(target.webview, { type: "TASK_RESULT", payload: { action: "import", data: result } });
-        for (const warning of result.warnings) {
-          emitTaskLog(target.webview, "warn", warning);
-        }
-        emitTaskLog(target.webview, "info", `导入报告: ${result.reportPath}`);
         return;
       }
 
       if (msg.type === "START_IMPORT_TO_NEW_PROFILE") {
-        const codexHome = path.resolve(resolveCodexHome(msg.payload.codexHome));
-        rememberCodexHome(codexHome);
-        const profileName = msg.payload.profileName.trim();
-        if (profileName.length === 0) {
-          throw new Error("新账号名称不能为空。");
-        }
-        emitTaskLog(target.webview, "info", `开始导入到新账号（模式=${msg.payload.mode}）`);
-        emitTaskLog(target.webview, "info", `目标 Codex 根目录: ${codexHome}`);
-        emitTaskLog(target.webview, "info", `备份 ZIP: ${path.resolve(msg.payload.backupZip)}`);
-        send(target.webview, { type: "TASK_PROGRESS", payload: { step: "import-new-profile", percent: 10, message: "创建账号槽位" } });
+        await withWriteAccess(msg.payload.codexHome, async (codexHomeRaw) => {
+          const codexHome = path.resolve(codexHomeRaw);
+          const profileName = msg.payload.profileName.trim();
+          if (profileName.length === 0) {
+            throw new Error("新账号名称不能为空。");
+          }
+          emitTaskLog(target.webview, "info", `开始导入到新账号（模式=${msg.payload.mode}）`);
+          emitTaskLog(target.webview, "info", `目标 Codex 根目录: ${codexHome}`);
+          emitTaskLog(target.webview, "info", `备份 ZIP: ${path.resolve(msg.payload.backupZip)}`);
+          send(target.webview, { type: "TASK_PROGRESS", payload: { step: "import-new-profile", percent: 10, message: "创建账号槽位" } });
 
-        const beforeSnapshot = await getProfilesSnapshot(codexHome);
-        const createdSnapshot = await createProfile(codexHome, profileName);
-        const created = resolveCreatedProfile(beforeSnapshot, createdSnapshot, profileName);
-        if (!created) {
-          throw new Error("未能定位新建账号槽位。");
-        }
-        emitTaskLog(target.webview, "info", `已创建账号槽位: ${created.name} (${created.id})`);
+          const beforeSnapshot = await getProfilesSnapshot(codexHome);
+          const createdSnapshot = await createProfile(codexHome, profileName);
+          const created = resolveCreatedProfile(beforeSnapshot, createdSnapshot, profileName);
+          if (!created) {
+            throw new Error("未能定位新建账号槽位。");
+          }
+          emitTaskLog(target.webview, "info", `已创建账号槽位: ${created.name} (${created.id})`);
 
-        send(target.webview, { type: "TASK_PROGRESS", payload: { step: "import-new-profile", percent: 45, message: "导入数据到新账号槽位" } });
-        const result = await runImport({
-          codexHome: created.path,
-          backupZip: msg.payload.backupZip,
-          replaceState: msg.payload.replaceState,
-          importAuth: msg.payload.importAuth,
-          mode: msg.payload.mode
+          send(target.webview, { type: "TASK_PROGRESS", payload: { step: "import-new-profile", percent: 45, message: "导入数据到新账号槽位" } });
+          const result = await runImport({
+            codexHome: created.path,
+            backupZip: msg.payload.backupZip,
+            replaceState: msg.payload.replaceState,
+            importAuth: msg.payload.importAuth,
+            mode: msg.payload.mode
+          });
+          await writeReportBundle(result.reportPath, result);
+
+          send(target.webview, { type: "TASK_PROGRESS", payload: { step: "import-new-profile", percent: 100, message: "导入完成" } });
+          send(target.webview, { type: "TASK_RESULT", payload: { action: "import", data: result } });
+          for (const warning of result.warnings) {
+            emitTaskLog(target.webview, "warn", warning);
+          }
+          emitTaskLog(target.webview, "info", `导入报告: ${result.reportPath}`);
+          emitTaskLog(target.webview, "info", `已导入到新账号槽位 ${created.name}。如需使用，请在账号页切换到该槽位。`);
+          const finalSnapshot = await getProfilesSnapshot(codexHome);
+          await emitSnapshot(target.webview, finalSnapshot);
         });
-        await writeReportBundle(result.reportPath, result);
-
-        send(target.webview, { type: "TASK_PROGRESS", payload: { step: "import-new-profile", percent: 100, message: "导入完成" } });
-        send(target.webview, { type: "TASK_RESULT", payload: { action: "import", data: result } });
-        for (const warning of result.warnings) {
-          emitTaskLog(target.webview, "warn", warning);
-        }
-        emitTaskLog(target.webview, "info", `导入报告: ${result.reportPath}`);
-        emitTaskLog(target.webview, "info", `已导入到新账号槽位 ${created.name}。如需使用，请在账号页切换到该槽位。`);
-        const finalSnapshot = await getProfilesSnapshot(codexHome);
-        await emitSnapshot(target.webview, finalSnapshot);
         return;
       }
 
@@ -878,36 +1022,75 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
       }
 
       if (msg.type === "START_THREAD_CLEANUP") {
-        const codexHome = await resolveAndValidateCodexHome(msg.payload.codexHome);
-        rememberCodexHome(codexHome);
-        emitTaskLog(
-          target.webview,
-          "info",
-          `开始执行对话清理（范围=${msg.payload.scope}, 生效=${msg.payload.applyMode}, 备份=${msg.payload.backupEnabled ? "on" : "off"}）`
-        );
-        send(target.webview, { type: "TASK_PROGRESS", payload: { step: "thread-cleanup", percent: 10, message: "准备清理任务" } });
-        const result = await executeThreadCleanup({
-          codexHome,
-          threadIds: msg.payload.threadIds,
-          scope: msg.payload.scope,
-          profileId: msg.payload.profileId,
-          backupEnabled: msg.payload.backupEnabled,
-          applyMode: msg.payload.applyMode,
-          onLog: (message) => emitTaskLog(target.webview, "info", message)
+        await withWriteAccess(msg.payload.codexHome, async (codexHome) => {
+          emitTaskLog(
+            target.webview,
+            "info",
+            `开始执行对话清理（范围=${msg.payload.scope}, 生效=${msg.payload.applyMode}, 备份=${msg.payload.backupEnabled ? "on" : "off"}）`
+          );
+          send(target.webview, { type: "TASK_PROGRESS", payload: { step: "thread-cleanup", percent: 10, message: "准备清理任务" } });
+          const result = await executeThreadCleanup({
+            codexHome,
+            threadIds: msg.payload.threadIds,
+            scope: msg.payload.scope,
+            profileId: msg.payload.profileId,
+            backupEnabled: msg.payload.backupEnabled,
+            applyMode: msg.payload.applyMode,
+            onLog: (message) => emitTaskLog(target.webview, "info", message)
+          });
+          const lockedProfiles = result.profiles.filter((item) => item.locked);
+          let relaunchedClients: string[] = [];
+          if (result.killTriggered) {
+            const relaunch = await relaunchKilledProcesses(collectThreadCleanupCommands(result));
+            relaunchedClients = relaunch.succeeded;
+            if (relaunch.attempted.length > 0) {
+              emitTaskLog(target.webview, "info", `已尝试恢复启动客户端: ${relaunch.attempted.join(", ")}`);
+            }
+            if (relaunch.succeeded.length > 0) {
+              emitTaskLog(target.webview, "info", `恢复启动成功: ${relaunch.succeeded.join(", ")}`);
+            }
+            if (relaunch.failed.length > 0) {
+              emitTaskLog(target.webview, "warn", `恢复启动失败: ${relaunch.failed.join(", ")}（可手动打开）`);
+            }
+          }
+          const scheduledProfiles = msg.payload.applyMode === "restartLater" ? lockedProfiles.map((item) => item.profileName) : [];
+          if (scheduledProfiles.length > 0) {
+            await writePendingThreadCleanup({
+              schemaVersion: 1,
+              createdAt: new Date().toISOString(),
+              codexHome,
+              threadIds: result.threadIds,
+              scope: result.scope,
+              profileId: result.profileId,
+              backupEnabled: result.backupEnabled
+            });
+            emitTaskLog(target.webview, "info", `已登记 ${scheduledProfiles.length} 个账号的清理任务，待重启后会自动继续执行。`);
+          } else {
+            await clearPendingThreadCleanup(codexHome);
+          }
+          send(target.webview, { type: "TASK_PROGRESS", payload: { step: "thread-cleanup", percent: 100, message: "对话清理执行完成" } });
+          send(target.webview, {
+            type: "TASK_RESULT",
+            payload: {
+              action: "threadCleanup",
+              data: {
+                ...result,
+                scheduledProfiles,
+                relaunchedClients
+              }
+            }
+          });
+          if (result.backupPath) {
+            emitTaskLog(target.webview, "info", `清理备份目录: ${result.backupPath}`);
+          }
+          if (result.notFoundThreadIds.length > 0) {
+            emitTaskLog(target.webview, "warn", `以下会话ID未命中: ${result.notFoundThreadIds.join(", ")}`);
+          }
+          if (lockedProfiles.length > 0) {
+            emitTaskLog(target.webview, "warn", `有 ${lockedProfiles.length} 个账号因进程占用未立即完成清理，已登记为重启后继续执行。`);
+          }
+          await emitStateSnapshot(target.webview, codexHome);
         });
-        send(target.webview, { type: "TASK_PROGRESS", payload: { step: "thread-cleanup", percent: 100, message: "对话清理执行完成" } });
-        send(target.webview, { type: "TASK_RESULT", payload: { action: "threadCleanup", data: result } });
-        if (result.backupPath) {
-          emitTaskLog(target.webview, "info", `清理备份目录: ${result.backupPath}`);
-        }
-        if (result.notFoundThreadIds.length > 0) {
-          emitTaskLog(target.webview, "warn", `以下会话ID未命中: ${result.notFoundThreadIds.join(", ")}`);
-        }
-        const lockedProfiles = result.profiles.filter((item) => item.locked);
-        if (lockedProfiles.length > 0) {
-          emitTaskLog(target.webview, "warn", `有 ${lockedProfiles.length} 个账号因进程占用未清理，请重启后再执行。`);
-        }
-        await emitStateSnapshot(target.webview, codexHome);
         return;
       }
 

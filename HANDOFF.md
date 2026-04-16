@@ -1,12 +1,12 @@
 # Codex Migration Extension Handoff
 
-最后更新：2026-03-11（修正会话清理在损坏 SQLite 下的中断问题）
+最后更新：2026-04-16（扩展版本升到 1.0.3，重打 VSIX；桌面 app 版本暂保持 1.0.2）
 
 ## 项目快照
 
 - 项目名：`codex-migration-extension`
 - 展示名：`Codex 迁移助手`
-- 当前版本：`1.0.2`
+- 当前版本：`1.0.3`
 - 形态：VS Code / Codex Webview 扩展
 - 技术栈：TypeScript、React、VS Code Webview、Node.js 20+
 - 目标：面向 Codex 用户的账号切换、数据迁移、备份恢复、会话清理与用量查看
@@ -19,7 +19,13 @@
 - 后来明确收敛到“只做 Codex”
 - UI 方案也从通用网页工具思路，收敛成 `VS Code Webview + React + TypeScript` 扩展
 
-当前不要再把它当成通用多客户端管理工具，默认定位就是“Codex 迁移助手扩展”。
+当前不要再把它当成通用多客户端管理工具，默认定位仍然是“Codex 迁移助手扩展”。
+
+但从本次更新开始，仓库内已经新增了 **Tauri 2 macOS 独立版衍生骨架**，用于逐步把现有扩展能力演进为独立 app。现状是：
+
+- 扩展仍然是当前可直接使用的主产品形态
+- 独立版已完成 monorepo 目录、共享 contracts、共享 UI 壳、Node runner、Tauri shell 与打包链路
+- 后续新增功能如果同时面向扩展和桌面端，优先考虑共享协议与共享存储，而不是各写一套
 
 ## 当前仓库里已存在的主要能力
 
@@ -64,28 +70,34 @@
 
 ## 当前工作树状态
 
-截至本次更新，工作树里仍存在**未提交**改动，重点已经从“基础 token pool”推进到“pool-runner 专用槽位”模型：
+截至本次更新，工作树里仍存在**未提交**改动，重点已经从“基础 token pool / pool-runner”推进到“共享存储 + 独立桌面版骨架”模型：
 
 - 已修改：
-  - `README.md`
+  - `.vscodeignore`
   - `package.json`
-  - `src/engine/profiles.ts`
-  - `src/engine/usage.ts`
+  - `package-lock.json`
+  - `HANDOFF.md`
   - `src/extension.ts`
+  - `src/util/logger.ts`
+  - `src/engine/profiles.ts`
+  - `src/engine/tokenPool.ts`
+  - `src/engine/threadCleanup.ts`
+  - `src/engine/usage.ts`
   - `src/protocol/messages.ts`
-  - `src/protocol/schema.ts`
   - `src/ui-host/bridge.ts`
-  - `webview/src/App.tsx`
   - `webview/src/api/types.ts`
   - `webview/src/pages/AccountsManager.tsx`
-  - `webview/src/pages/Home.tsx`
   - `webview/src/state/store.ts`
-  - `webview/src/styles.css`
 - 新增未提交：
-  - `src/engine/tokenPool.ts`
-  - `webview/src/pages/TokenPoolPanel.tsx`
+  - `packages/shared-contracts/`
+  - `packages/shared-ui/`
+  - `apps/desktop-macos/`
+  - `src/desktop/runner.ts`
+  - `src/util/sharedData.ts`
+  - `src/util/sharedLock.ts`
+  - `test/usage.test.mjs`
 
-不要把这批 token pool / pool-runner 相关改动当成无关噪音回滚掉。
+不要把这批 token pool / pool-runner / 桌面版骨架相关改动当成无关噪音回滚掉。
 
 ## 当前 token pool 改动的已知方向
 
@@ -124,7 +136,180 @@ token pool 已经不再按“直接改当前活动槽位 auth”理解，而是�
 
 ## 本轮新增修复（未提交）
 
-### 0. 账号管理与账号池支持拖拽排序
+### 0. Tauri macOS 独立版骨架已落地
+
+本轮首次把“独立 app”从纯计划推进到可构建、可打包的仓库内实现，现状如下：
+
+- 仓库已改成 monorepo 形态
+  - `packages/shared-contracts`
+  - `packages/shared-ui`
+  - `apps/desktop-macos`
+- 独立版前端使用顶部横向 Tab 外壳，入口包括：
+  - `总览`
+  - `账号`
+  - `账号池`
+  - `迁移`
+  - `对话清理`
+  - `设置`
+- 桌面端不是重写业务，而是通过 `src/desktop/runner.ts` 调用现有 engine
+- Tauri shell 现在通过 **内置 sidecar runner** 返回 JSON 结果给 React 前端
+- 已补独立 app 图标源文件并生成 Tauri 所需图标资产
+
+当前已验证通过：
+
+- `npm run build:desktop`
+- `cargo check --manifest-path apps/desktop-macos/src-tauri/Cargo.toml`
+- `npm --workspace @codex-migration/desktop-macos run tauri:build`
+- `/usr/local/bin/node --test test/*.mjs`
+- sidecar 直跑烟测：
+  - `initAppState`
+  - `previewThreadCleanup`（显式传入 `CODEX_SQLJS_WASM_PATH`）
+- `.app` bundle 内实际文件校验：
+  - `Contents/MacOS/codex-desktop-runner`
+  - `Contents/Resources/desktop/sql-wasm.wasm`
+  - 直接运行 bundle 内 sidecar 也已通过 `initAppState / previewThreadCleanup`
+
+本地产物路径：
+
+- `.app`
+  - `apps/desktop-macos/src-tauri/target/release/bundle/macos/Codex Migration Assistant.app`
+- `.dmg`
+  - 当前提交口径下，桌面 app 版本仍保持 `1.0.2`
+  - 本地曾试打 `1.0.3` 的 `.dmg`，但 `bundle_dmg.sh` 失败，这部分**不纳入本次 git 提交版本**
+
+本轮又补了一次桌面端发行收口，当前状态变成：
+
+- `apps/desktop-macos/scripts/build-sidecar.mjs` 会把 `dist/desktop/runner.js` 打成 `src-tauri/binaries/codex-desktop-runner-$TARGET_TRIPLE`
+- `src-tauri/tauri.conf.json` 已补 `bundle.externalBin`
+- `src-tauri/src/lib.rs` 已改成通过 `tauri-plugin-shell` 执行 sidecar，不再调用系统全局 `node`
+- `sql.js` 的 wasm 已作为 Tauri resource 一起打包，Rust 启动 sidecar 时会通过环境变量把资源路径传给 runner
+- `src/util/logger.ts` 已改成宿主自适应
+  - 扩展内仍写 VS Code output channel
+  - sidecar / CLI 下自动退化到 console logger
+
+当前剩余边界：
+
+- 桌面端虽然已经不再依赖系统全局 `node`，但 sidecar 仍是由 Node runner 打包而来，不是纯 Rust 原生实现
+- 共享 UI 目前还是“复用现有 Webview 组件”，还没做彻底的桌面化拆分
+- 签名 / 公证 / GitHub Release 还没接入
+
+本轮随后又补了一次桌面端 UI 打磨：
+
+- `AccountsManager` 新增 `sectionMode`
+  - 独立 app 中同一页面可以按 `accounts / tokenPool / cleanup` 分页复用
+  - 桌面端不再保留扩展里的折叠式标题交互
+- 新增桌面专用样式文件
+  - 补了 overview hero、统计卡片、结果卡片、内联操作区
+  - 给桌面端表格加了窄宽度自动隐藏低优先级列的响应式策略
+  - 当前桌面端的观感已经和扩展明显区分开，不再只是“把 Webview 原封不动塞进 Tauri”
+
+相关文件补充：
+
+- `apps/desktop-macos/src/desktop.css`
+- `apps/desktop-macos/src/App.tsx`
+- `webview/src/pages/AccountsManager.tsx`
+
+相关文件：
+
+- `package.json`
+- `packages/shared-contracts/src/index.ts`
+- `packages/shared-ui/src/DesktopChrome.tsx`
+- `packages/shared-ui/src/index.ts`
+- `packages/shared-ui/src/styles.css`
+- `apps/desktop-macos/package.json`
+- `apps/desktop-macos/scripts/build-sidecar.mjs`
+- `apps/desktop-macos/src/App.tsx`
+- `apps/desktop-macos/src/lib/desktopClient.ts`
+- `apps/desktop-macos/src-tauri/capabilities/default.json`
+- `apps/desktop-macos/src-tauri/src/lib.rs`
+- `apps/desktop-macos/src-tauri/tauri.conf.json`
+- `src/desktop/runner.ts`
+- `src/util/logger.ts`
+- `src/engine/threadCleanup.ts`
+
+### 0.1 共享写锁与共享路径协议已补齐
+
+为了让扩展与独立 app 能直接共用 `~/.codex` / `~/.codex-profiles`，本轮补了共享路径与单写锁基础设施：
+
+- 新增 `src/util/sharedData.ts`
+  - 统一推导 `profilesRoot`
+  - 统一推导 token pool `meta.v1.json / secrets.v1.json`
+  - 统一推导共享锁文件路径
+- 新增 `src/util/sharedLock.ts`
+  - 使用 `wx` 创建锁文件
+  - 扩展与桌面端统一用 `owner` 标识写入方
+  - 锁冲突时返回明确错误，而不是静默覆盖
+- `src/ui-host/bridge.ts` 的主要写操作已统一包在共享写锁中
+- `src/desktop/runner.ts` 的写操作也走同一把锁
+
+这意味着之后如果扩展和桌面端同时打开，共享目录至少不会被两个入口同时无保护写入。
+
+### 0.1.1 pending / metadata schema 已继续补齐
+
+为了让扩展和桌面端对控制文件的兼容边界更清晰，本轮把 schema 又往前收了一步：
+
+- `thread-cleanup-pending` 持久化文件现在会显式写入 `schemaVersion: 1`
+- 扩展侧和桌面侧读取 pending 文件都兼容“旧文件无 schemaVersion”的情况
+- token pool metadata 现在同时保留：
+  - `schemaVersion: 1`
+  - `version: 1`
+  这样旧共享文件仍可读取，新写入也有明确 schema 标识
+
+相关文件：
+
+- `src/ui-host/bridge.ts`
+- `src/desktop/runner.ts`
+- `src/engine/tokenPool.ts`
+
+### 0.1.2 VSIX 打包已补忽略规则
+
+由于仓库已经变成 workspace/monorepo，`vsce package` 会把 `apps/`、`packages/` 以及 `node_modules/@codex-migration/*` 的本地链接一起带进扩展包，导致：
+
+- 包体异常膨胀
+- 甚至触发 `not a file: node_modules/@codex-migration/desktop-macos`
+
+本轮已补 `.vscodeignore`，显式排除：
+
+- `apps/**`
+- `packages/**`
+- `node_modules/@codex-migration/**`
+- 本地 handoff / project sync 文档与已有 `.vsix`
+
+现在重新执行 `npm run package:vsix` 已通过，当前最新扩展包为：
+
+- `codex-migration-assistant-1.0.3.vsix`
+
+当前体积：
+
+- 541 files
+- 9.75 MB
+
+本轮额外状态：
+
+- 根扩展版本已升到 `1.0.3`
+- `codex-migration-assistant-1.0.3.vsix` 已成功打出
+- 包内 `dist/engine/usage.js` 已确认包含 `used_percent = 1` 不再按 `100%` 处理的修复逻辑
+- 桌面端源码会一起提交，但其 manifest 版本暂保持 `1.0.2`
+- 桌面端单独版本迭代、`.dmg` 失败排查与发布，留到后续再做
+
+### 0.2 token pool 已从 VS Code storage 迁到共享文件存储
+
+这是这轮最关键的基础改造之一，因为不先把 token pool 从 VS Code 宿主私有存储里拿出来，桌面端无法复用。
+
+本轮已完成：
+
+- token pool 元数据改为写入共享文件：
+  - `~/.codex-profiles/token-pool/meta.v1.json`
+  - `~/.codex-profiles/token-pool/secrets.v1.json`
+- 保留旧版扩展 `globalState / secrets` 到共享文件的迁移逻辑
+- `TokenPoolService` 已去掉对 VS Code runtime 的硬依赖
+  - 旧扩展路径通过 `initializeTokenPoolService(context, notifications)` 注入 legacy storage 与 UI 提示
+  - 桌面端通过 `initializeDesktopTokenPoolService()` 直接复用同一服务
+- 账号池的主要写接口都已支持显式 `codexHomeOverride`
+
+这个改动之后，token pool 不再被锁死在 Webview 扩展内部，已经具备被独立 app 复用的前提。
+
+### 1. 账号管理与账号池支持拖拽排序
 
 本轮新增了两套列表的持久化拖拽排序：
 
@@ -171,7 +356,7 @@ UI 上也同步统一：
 - `webview/src/api/types.ts`
 - `webview/src/styles.css`
 
-### 1. pool-runner 按钮行为修复
+### 2. pool-runner 按钮行为修复
 
 此前账号池面板里的“切换到 pool-runner”在未创建槽位时是禁用态，用户侧容易表现成“点击没反应”。
 
@@ -194,7 +379,7 @@ UI 上也同步统一：
 - `webview/src/pages/AccountsManager.tsx`
 - `webview/src/pages/TokenPoolPanel.tsx`
 
-### 2. token pool 重复快照刷新修复
+### 3. token pool 重复快照刷新修复
 
 此前 token pool 的多数操作会同时触发两次整页状态刷新：
 
@@ -213,7 +398,7 @@ UI 上也同步统一：
 
 - `src/ui-host/bridge.ts`
 
-### 3. 账号页自动刷新 interval 稳定化
+### 4. 账号页自动刷新 interval 稳定化
 
 此前 `AccountsManager` 的自动刷新 interval 依赖于 props 回调与 profile 列表，整页重渲染时会频繁重建 timer。
 
@@ -511,3 +696,75 @@ Get-StartApps | Where-Object { $_.Name -like "*Codex*" } | Format-Table Name, Ap
 - `npm run typecheck` 通过
 - `npm run build` 通过
 - 这轮修改尚未提交时，`AGENTS.md` 仍不应纳入提交
+
+## 2026-04-16 CLIProxy usage 百分比修复
+
+这轮处理了 `~/.cli-proxy-api/` 导入账号后的额度显示错误：
+
+- 现象：
+  - CLIProxy / `chatgpt.com/backend-api/wham/usage` 返回 `used_percent = 1`
+  - 插件此前把 `1` 当成比例 `1.0` 处理，换算成 `100% used`
+  - 结果导致账号页和 token pool 都把原本还剩 `99%` 的账号显示成 `0%` / `已用尽`
+
+- 根因：
+  - `src/engine/usage.ts` 的 `normalizePercent(...)` 采用了 `value <= 1` 就乘以 `100` 的策略
+  - 这和 CLIProxy 当前 usage 接口的字段语义冲突
+  - 当前这批接口返回的是 `0-100` 的百分比值，不是 `0-1` 比例
+
+- 本轮修正：
+  - 只有 `0 <= value < 1` 时才按比例换算
+  - `value === 1` 现在保留为 `1%`
+  - 账号管理页和 token pool 因为共用 `usage.ts`，会一起修复
+
+- 回归校验：
+  - 新增测试覆盖 `used_percent = 1 -> remainingPercent = 99`
+  - 修复点已经通过显式 Node 测试命令校验
+
+### 本轮涉及文件
+
+- `src/engine/usage.ts`
+- `test/usage.test.mjs`
+
+## 2026-04-16 对话清理重启语义修复
+
+这轮同时修了对话清理按钮语义和实际行为不一致的问题：
+
+- 旧行为问题：
+  - `确认删除（下次重启生效）` 实际上并不会登记待执行任务
+  - 如果清理时遇到 SQLite / 目录占用，只会返回 `locked`，用户重启后还得手动再点一次
+  - `确认删除并立即结束相关进程` 会执行 kill 后重试清理，但不会尝试恢复启动被结束的客户端
+
+- 本轮修正：
+  - `restartLater` 现在会把未完成的清理请求持久化到 `codex-profiles/.thread-cleanup-pending.json`
+  - 下次 `INIT / REFRESH_PROFILES` 时会自动检查 pending 清理；如果占用已消失，会自动继续执行
+  - `killNow` 完成后会复用现有客户端恢复启动逻辑，尝试重新拉起被结束的客户端
+  - 对话清理结果新增：
+    - `scheduledProfiles`
+    - `relaunchedClients`
+  - 结果弹窗会明确显示：
+    - 哪些账号已登记为“重启后继续执行”
+    - 哪些客户端已恢复启动
+
+### 本轮涉及文件
+
+- `src/ui-host/bridge.ts`
+- `src/protocol/messages.ts`
+- `webview/src/api/types.ts`
+- `webview/src/pages/AccountsManager.tsx`
+
+## 2026-04-16 对话清理备份默认值调整
+
+这轮把“删除前备份”从默认开启改成默认关闭：
+
+- 原因：
+  - 当前对话清理更常见的诉求是快速删除
+  - 默认开启会额外生成清理备份目录，和用户的预期不一致
+
+- 本轮修正：
+  - `threadCleanupBackupEnabled` 初始值从 `true` 改为 `false`
+  - 界面文案同步从“默认开启”改为“默认关闭”
+
+### 本轮涉及文件
+
+- `webview/src/state/store.ts`
+- `webview/src/pages/AccountsManager.tsx`

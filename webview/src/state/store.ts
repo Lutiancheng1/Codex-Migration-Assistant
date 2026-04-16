@@ -64,7 +64,7 @@ export const initialState: UiState = {
   threadCleanupInput: "",
   threadCleanupScope: "all",
   threadCleanupProfileId: "",
-  threadCleanupBackupEnabled: true,
+  threadCleanupBackupEnabled: false,
   threadCleanupPreview: undefined,
   threadCleanupResult: undefined,
   backupZip: "",

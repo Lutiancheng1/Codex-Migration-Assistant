@@ -1,0 +1,22 @@
+[package]
+name = "codex-migration-desktop"
+version = "1.0.2"
+description = "Codex Migration Assistant desktop shell"
+authors = ["tiancheng"]
+edition = "2021"
+
+[lib]
+name = "codex_migration_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0.2", features = [] }
+
+[dependencies]
+base64 = "0.22"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2.8.2", features = [] }
+tauri-plugin-dialog = "2.4.2"
+tauri-plugin-opener = "2.4.1"
+tauri-plugin-shell = "2.3.1"

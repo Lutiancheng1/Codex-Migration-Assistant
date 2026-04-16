@@ -3,3 +3,7 @@ dist/
 dist-webview/
 .vscode-test/
 *.vsix
+.DS_Store
+apps/desktop-macos/dist/
+apps/desktop-macos/src-tauri/target/
+apps/desktop-macos/src-tauri/binaries/

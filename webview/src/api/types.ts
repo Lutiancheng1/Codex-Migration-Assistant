@@ -308,6 +308,8 @@ export type ThreadCleanupResult = {
   applyMode: ThreadCleanupApplyMode;
   killTriggered: boolean;
   killedCount: number;
+  relaunchedClients: string[];
+  scheduledProfiles: string[];
   notFoundThreadIds: string[];
   profiles: ThreadCleanupProfileResult[];
 };

@@ -52,6 +52,7 @@ type Props = {
   onReorderProfiles(orderedIds: string[]): void;
   onPreviewThreadCleanup(): void;
   onStartThreadCleanup(applyMode: ThreadCleanupApplyMode): void;
+  sectionMode?: "all" | "accounts" | "tokenPool" | "cleanup";
 };
 
 function formatTime(value?: string): string {
@@ -89,6 +90,11 @@ function computeCleanupSummary(preview?: ThreadCleanupPreviewResult): {
 }
 
 export function AccountsManager(props: Props): JSX.Element {
+  const sectionMode = props.sectionMode ?? "all";
+  const showTokenPool = sectionMode === "all" || sectionMode === "tokenPool";
+  const showProfiles = sectionMode === "all" || sectionMode === "accounts";
+  const showThreadCleanup = sectionMode === "all" || sectionMode === "cleanup";
+  const useAccordionPanels = sectionMode === "all";
   const activeProfile = props.profiles.find((item) => item.id === props.activeProfileId);
   const poolRunnerProfile = props.profiles.find((item) => item.id === POOL_RUNNER_PROFILE_ID);
   const sortableProfileIds = useMemo(() => props.profiles.filter((item) => item.id !== "live").map((item) => item.id), [props.profiles]);
@@ -102,9 +108,9 @@ export function AccountsManager(props: Props): JSX.Element {
   const [dragOverProfileId, setDragOverProfileId] = useState<string>();
   const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(5 * 60 * 1000);
   const [pendingCleanupMode, setPendingCleanupMode] = useState<ThreadCleanupApplyMode>();
-  const [isTokenPoolExpanded, setIsTokenPoolExpanded] = useState<boolean>(true);
-  const [isProfilesExpanded, setIsProfilesExpanded] = useState<boolean>(false);
-  const [isThreadCleanupExpanded, setIsThreadCleanupExpanded] = useState<boolean>(false);
+  const [isTokenPoolExpanded, setIsTokenPoolExpanded] = useState<boolean>(sectionMode !== "accounts" && sectionMode !== "cleanup");
+  const [isProfilesExpanded, setIsProfilesExpanded] = useState<boolean>(sectionMode === "accounts");
+  const [isThreadCleanupExpanded, setIsThreadCleanupExpanded] = useState<boolean>(sectionMode === "cleanup");
   const [isCleanupPreviewModalOpen, setIsCleanupPreviewModalOpen] = useState<boolean>(false);
   const [isCleanupResultModalOpen, setIsCleanupResultModalOpen] = useState<boolean>(false);
   const lastPreviewRef = React.useRef<ThreadCleanupPreviewResult | undefined>();
@@ -202,20 +208,33 @@ export function AccountsManager(props: Props): JSX.Element {
     lastResultRef.current = props.threadCleanupResult;
   }, [props.threadCleanupResult]);
 
+  function renderPanel(title: string, expanded: boolean, onToggle: () => void, children: React.ReactNode): JSX.Element {
+    return (
+      <section className={`thread-cleanup-panel ${useAccordionPanels ? "" : "thread-cleanup-panel-static"}`.trim()}>
+        {useAccordionPanels ? (
+          <button
+            type="button"
+            className="thread-cleanup-toggle"
+            onClick={onToggle}
+            aria-expanded={expanded}
+          >
+            <h3>{title}</h3>
+            <span className="thread-cleanup-toggle-icon">{expanded ? "▾" : "▸"}</span>
+          </button>
+        ) : (
+          <div className="thread-cleanup-static-header">
+            <h3>{title}</h3>
+          </div>
+        )}
+        {expanded ? children : null}
+      </section>
+    );
+  }
+
   return (
     <section>
-      <section className="thread-cleanup-panel">
-        <button
-          type="button"
-          className="thread-cleanup-toggle"
-          onClick={() => setIsTokenPoolExpanded((prev) => !prev)}
-          aria-expanded={isTokenPoolExpanded}
-        >
-          <h3>账号池</h3>
-          <span className="thread-cleanup-toggle-icon">{isTokenPoolExpanded ? "▾" : "▸"}</span>
-        </button>
-
-        {isTokenPoolExpanded ? (
+      {showTokenPool
+        ? renderPanel("账号池", isTokenPoolExpanded, () => setIsTokenPoolExpanded((prev) => !prev), (
           <TokenPoolPanel
             codexHome={props.codexHome}
             tokenPool={props.tokenPool}
@@ -234,21 +253,11 @@ export function AccountsManager(props: Props): JSX.Element {
             onReorderEntries={props.onReorderTokenPoolEntries}
             onUpdateSettings={props.onUpdateTokenPoolSettings}
           />
-        ) : null}
-      </section>
+        ))
+        : null}
 
-      <section className="thread-cleanup-panel">
-        <button
-          type="button"
-          className="thread-cleanup-toggle"
-          onClick={() => setIsProfilesExpanded((prev) => !prev)}
-          aria-expanded={isProfilesExpanded}
-        >
-          <h3>账号管理与切换</h3>
-          <span className="thread-cleanup-toggle-icon">{isProfilesExpanded ? "▾" : "▸"}</span>
-        </button>
-
-        {isProfilesExpanded ? (
+      {showProfiles
+        ? renderPanel("账号管理与切换", isProfilesExpanded, () => setIsProfilesExpanded((prev) => !prev), (
           <>
       <div className="grid">
         <p><strong>账号目录根：</strong> {props.profilesRoot || "未初始化"}</p>
@@ -576,21 +585,11 @@ export function AccountsManager(props: Props): JSX.Element {
           )
         : null}
           </>
-        ) : null}
-      </section>
+        ))
+        : null}
 
-      <section className="thread-cleanup-panel">
-        <button
-          type="button"
-          className="thread-cleanup-toggle"
-          onClick={() => setIsThreadCleanupExpanded((prev) => !prev)}
-          aria-expanded={isThreadCleanupExpanded}
-        >
-          <h3>对话清理（按会话ID）</h3>
-          <span className="thread-cleanup-toggle-icon">{isThreadCleanupExpanded ? "▾" : "▸"}</span>
-        </button>
-
-        {isThreadCleanupExpanded ? (
+      {showThreadCleanup
+        ? renderPanel("对话清理（按会话ID）", isThreadCleanupExpanded, () => setIsThreadCleanupExpanded((prev) => !prev), (
           <>
             <p className="thread-cleanup-help">支持输入多个会话ID（逗号/空格/换行分隔），可直接粘贴 Codex 的会话ID（如：019cbe6b-6140-7a62-9ce7-ed24424e4864），先预览后执行删除。</p>
 
@@ -636,7 +635,7 @@ export function AccountsManager(props: Props): JSX.Element {
               ) : null}
 
               <label className="check-row">
-                <span className="check-text">删除前备份（默认开启）</span>
+                <span className="check-text">删除前备份（默认关闭）</span>
                 <input
                   type="checkbox"
                   checked={props.threadCleanupBackupEnabled}
@@ -664,8 +663,8 @@ export function AccountsManager(props: Props): JSX.Element {
               </p>
             ) : null}
           </>
-        ) : null}
-      </section>
+        ))
+        : null}
 
       {isCleanupPreviewModalOpen && props.threadCleanupPreview
         ? createPortal(
@@ -781,6 +780,12 @@ export function AccountsManager(props: Props): JSX.Element {
                   ，结束数量: {props.threadCleanupResult.killedCount}
                   {props.threadCleanupResult.backupPath ? `，备份目录: ${props.threadCleanupResult.backupPath}` : ""}
                 </p>
+                {props.threadCleanupResult.relaunchedClients.length > 0 ? (
+                  <p>恢复启动: {props.threadCleanupResult.relaunchedClients.join(", ")}</p>
+                ) : null}
+                {props.threadCleanupResult.scheduledProfiles.length > 0 ? (
+                  <p className="warning">已登记重启后继续执行: {props.threadCleanupResult.scheduledProfiles.join(", ")}</p>
+                ) : null}
                 <div className="thread-cleanup-profile-list">
                   {props.threadCleanupResult.profiles.map((profile) => (
                     <article key={`${profile.profileId}-result`} className="thread-cleanup-profile-card">

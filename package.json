@@ -2,7 +2,7 @@
   "name": "codex-migration-assistant",
   "displayName": "Codex 迁移助手",
   "description": "用于 Codex 的跨设备记录迁移、当前设备多账号槽位切换、pool-runner 账号池无感换号与会话清理。",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -10,6 +10,10 @@
     "url": "https://github.com/Lutiancheng1/Codex-Migration-Assistant.git"
   },
   "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -79,7 +83,10 @@
     "clean": "rm -rf dist dist-webview",
     "build:ext": "tsc -p tsconfig.json",
     "build:webview": "vite build --config webview/vite.config.ts",
+    "build:desktop": "npm run build:ext && npm --workspace @codex-migration/desktop-macos run build:sidecar && npm --workspace @codex-migration/desktop-macos run build",
     "build": "npm run build:webview && npm run build:ext",
+    "tauri:dev": "npm run build:ext && npm --workspace @codex-migration/desktop-macos run tauri:dev",
+    "tauri:build": "npm run build:ext && npm --workspace @codex-migration/desktop-macos run tauri:build",
     "package:vsix": "npm run build && npx @vscode/vsce package",
     "package:vsix:node20": "bash -lc 'eval \"$(fnm env)\" && fnm use 20 >/dev/null && npm run build && npx @vscode/vsce package'",
     "watch:ext": "tsc -w -p tsconfig.json",

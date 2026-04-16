@@ -12,7 +12,14 @@ export function activate(context: vscode.ExtensionContext): void {
   logger.appendLine("Codex Migration Assistant activated.");
 
   context.subscriptions.push(
-    initializeTokenPoolService(context),
+    initializeTokenPoolService(context, {
+      info: (message) => {
+        void vscode.window.showInformationMessage(message);
+      },
+      warn: (message) => {
+        void vscode.window.showWarningMessage(message);
+      }
+    }),
     vscode.window.registerWebviewViewProvider(SIDEBAR_VIEW_ID, new CodexSidebarViewProvider(context)),
     vscode.commands.registerCommand("codexMigration.open", () => executeOpenPanel(context)),
     vscode.commands.registerCommand("codexMigration.export", () => executeExport(context)),

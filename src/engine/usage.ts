@@ -178,7 +178,9 @@ function normalizePercent(value: number | undefined): number | undefined {
   if (typeof value !== "number" || Number.isNaN(value)) {
     return undefined;
   }
-  if (value >= 0 && value <= 1) {
+  // Current usage endpoints return used_percent as a 0-100 percentage value.
+  // Keep support for fractional ratios such as 0.25, but do not treat 1 as 100%.
+  if (value >= 0 && value < 1) {
     return Math.min(100, Math.max(0, value * 100));
   }
   return Math.min(100, Math.max(0, value));

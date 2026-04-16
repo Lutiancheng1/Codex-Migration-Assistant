@@ -134,6 +134,10 @@ type SqliteSession = {
 let sqlJsPromise: Promise<SqlJsStatic> | undefined;
 
 function getSqlJsWasmPath(): string {
+  const override = process.env.CODEX_SQLJS_WASM_PATH?.trim();
+  if (override) {
+    return override;
+  }
   return require.resolve("sql.js/dist/sql-wasm.wasm");
 }
 

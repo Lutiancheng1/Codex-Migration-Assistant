@@ -1,10 +1,18 @@
-﻿# Workspace/source
+# Workspace/source
 .vscode/**
 .github/**
 src/**
 webview/**
 test/**
 docs/**
+apps/**
+packages/**
+
+# Local-only docs and generated archives
+AGENTS.md
+HANDOFF.md
+PROJECT_SYNC.md
+codex-migration-assistant-*.vsix
 
 # Build artifacts not needed in VSIX
 *.map
@@ -25,6 +33,7 @@ node_modules/**/*.markdown
 node_modules/**/*.map
 node_modules/**/*.ts
 node_modules/**/*.tsx
+node_modules/@codex-migration/**
 
 # Keep extension docs
 !README.md
