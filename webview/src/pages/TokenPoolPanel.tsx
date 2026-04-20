@@ -218,14 +218,13 @@ export function TokenPoolPanel(props: Props): JSX.Element {
               <th>账号</th>
               <th>5h/7d</th>
               <th>状态</th>
-              <th>最近刷新</th>
               <th className="accounts-actions-col">操作</th>
             </tr>
           </thead>
           <tbody>
             {entries.length === 0 ? (
               <tr>
-                <td className="token-pool-empty-row" colSpan={6}>暂未导入 token JSON。</td>
+                <td className="token-pool-empty-row" colSpan={5}>暂未导入 token JSON。</td>
               </tr>
             ) : null}
 
@@ -301,7 +300,6 @@ export function TokenPoolPanel(props: Props): JSX.Element {
                     {`${formatPercent(entry.usage?.fiveHour?.remainingPercent)}/${formatPercent(entry.usage?.oneWeek?.remainingPercent)}`}
                   </td>
                   <td>{statusLabel(entry)}</td>
-                  <td>{entry.usage ? formatTime(entry.usage.fetchedAt) : "-"}</td>
                   <td className="accounts-actions-col">
                     <div className="account-actions-menu" data-token-pool-menu-id={entry.id}>
                       <button
