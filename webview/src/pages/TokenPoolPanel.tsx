@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ProfileSummary, TokenPoolEntry, TokenPoolSnapshot } from "../api/types";
 import { summarizeUsageErrors } from "./usageErrorSummary";
 
@@ -87,6 +87,8 @@ export function TokenPoolPanel(props: Props): JSX.Element {
   const [pendingDeleteEntryId, setPendingDeleteEntryId] = useState<string>();
   const [draggingEntryId, setDraggingEntryId] = useState<string>();
   const [dragOverEntryId, setDragOverEntryId] = useState<string>();
+  const tableWrapRef = useRef<HTMLDivElement | null>(null);
+  const currentRowRef = useRef<HTMLTableRowElement | null>(null);
   const entries = props.tokenPool.entries;
   const isPoolRunnerActive = props.activeProfileId === props.poolRunnerProfile?.id;
   const canSyncCurrentToPoolRunner = !isPoolRunnerActive && !!props.activeProfileId;
@@ -134,6 +136,20 @@ export function TokenPoolPanel(props: Props): JSX.Element {
       window.removeEventListener("resize", handleScrollOrResize);
     };
   }, [openActionEntryId]);
+
+  useEffect(() => {
+    const wrap = tableWrapRef.current;
+    const currentRow = currentRowRef.current;
+    if (!wrap || !currentRow) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      currentRow.scrollIntoView({
+        block: "nearest",
+        inline: "nearest"
+      });
+    });
+  }, [entries]);
 
   return (
     <section className="token-pool-panel">
@@ -210,8 +226,15 @@ export function TokenPoolPanel(props: Props): JSX.Element {
         <span>池内账号数：{entries.length}</span>
       </div>
 
-      <div className="accounts-table-wrap token-pool-table-wrap">
+      <div ref={tableWrapRef} className="accounts-table-wrap token-pool-table-wrap">
         <table className="accounts-table token-pool-table">
+          <colgroup>
+            <col className="token-pool-order-col" />
+            <col className="token-pool-account-width-col" />
+            <col className="token-pool-usage-col" />
+            <col className="token-pool-status-col" />
+            <col className="token-pool-actions-col" />
+          </colgroup>
           <thead>
             <tr>
               <th className="accounts-order-col" aria-label="排序"></th>
@@ -236,6 +259,7 @@ export function TokenPoolPanel(props: Props): JSX.Element {
               const planBadge = getPlanBadge(entry.usage?.planType || entry.planTypeHint);
               return (
                 <tr
+                  ref={entry.current ? currentRowRef : undefined}
                   key={entry.id}
                   className={`${entry.current ? "current" : ""} ${draggingEntryId === entry.id ? "dragging" : ""} ${isDragOver ? "drag-over" : ""}`.trim()}
                   onDragOver={(event) => {

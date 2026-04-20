@@ -657,7 +657,30 @@ td {
 }
 
 .token-pool-table {
-  min-width: 680px;
+  width: max-content;
+  min-width: 0;
+}
+
+.token-pool-table-wrap {
+  display: block;
+  max-height: 420px;
+  overflow-y: auto !important;
+  padding-bottom: 0;
+  overscroll-behavior: contain;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none;
+}
+
+.token-pool-table-wrap::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.token-pool-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--card);
 }
 
 .token-pool-table tbody tr {
@@ -671,23 +694,38 @@ td {
   color: var(--muted);
 }
 
+.token-pool-table col.token-pool-order-col {
+  width: 44px;
+}
+
+.token-pool-table col.token-pool-usage-col {
+  width: 88px;
+}
+
+.token-pool-table col.token-pool-status-col {
+  width: 86px;
+}
+
+.token-pool-table col.token-pool-actions-col {
+  width: 56px;
+}
+
 .token-pool-table .token-pool-account-col {
-  min-width: 220px;
-  max-width: 320px;
+  width: auto;
 }
 
 .token-pool-table .token-pool-account-title {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-width: 0;
+  width: max-content;
+  max-width: none;
 }
 
 .token-pool-table .token-pool-account-col strong {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: inline;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .token-pool-table td:nth-child(3) {
@@ -734,33 +772,28 @@ td {
   color: var(--muted);
 }
 
-.accounts-table-wrap,
-.token-pool-table-wrap {
+.accounts-table-wrap {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--fg) 28%, transparent) transparent;
 }
 
-.accounts-table-wrap::-webkit-scrollbar,
-.token-pool-table-wrap::-webkit-scrollbar {
+.accounts-table-wrap::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-.accounts-table-wrap::-webkit-scrollbar-track,
-.token-pool-table-wrap::-webkit-scrollbar-track {
+.accounts-table-wrap::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.accounts-table-wrap::-webkit-scrollbar-thumb,
-.token-pool-table-wrap::-webkit-scrollbar-thumb {
+.accounts-table-wrap::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--fg) 24%, transparent);
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
-.accounts-table-wrap::-webkit-scrollbar-thumb:hover,
-.token-pool-table-wrap::-webkit-scrollbar-thumb:hover {
+.accounts-table-wrap::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--fg) 36%, transparent);
   background-clip: padding-box;
 }

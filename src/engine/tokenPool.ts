@@ -718,6 +718,15 @@ class TokenPoolService implements DisposableLike {
     return this.getSnapshot(codexHomeOverride);
   }
 
+  private async refreshEntriesSequentially(meta: TokenPoolMetadata, codexHome: string): Promise<void> {
+    for (let index = 0; index < meta.entries.length; index += 1) {
+      const entry = meta.entries[index];
+      this.emitLog("info", `账号池自动检测正在顺序刷新 ${index + 1}/${meta.entries.length}: ${entry.email || entry.accountId}`);
+      meta.entries[index] = await this.refreshUsageForMeta(entry, codexHome);
+    }
+    this.emitLog("info", `账号池自动检测已顺序刷新完成，共 ${meta.entries.length} 个账号。`);
+  }
+
   async reorderEntries(orderedIds: string[], codexHomeOverride?: string): Promise<TokenPoolSnapshot> {
     const meta = await this.readMeta(codexHomeOverride);
     const current = new Map(meta.entries.map((entry) => [entry.id, entry]));
@@ -869,22 +878,26 @@ class TokenPoolService implements DisposableLike {
         return;
       }
 
+      await this.refreshEntriesSequentially(meta, codexHome);
+
       const poolRunner = await resolvePoolRunnerProfile(codexHome);
       if (!poolRunner?.active) {
+        await this.writeMeta(meta, codexHome);
         return;
       }
 
       const activeEntryId = await this.detectActiveEntryId(codexHome, meta);
       if (!activeEntryId) {
+        await this.writeMeta(meta, codexHome);
         return;
       }
 
       const currentIndex = meta.entries.findIndex((entry) => entry.id === activeEntryId);
       if (currentIndex < 0) {
+        await this.writeMeta(meta, codexHome);
         return;
       }
 
-      meta.entries[currentIndex] = await this.refreshUsageForMeta(meta.entries[currentIndex], codexHome);
       if (isAvailableForSwitch(meta.entries[currentIndex])) {
         await this.writeMeta(meta, codexHome);
         return;
@@ -892,14 +905,9 @@ class TokenPoolService implements DisposableLike {
 
       const candidates = this.rotateCandidates(meta.entries, activeEntryId).filter((entry) => entry.id !== activeEntryId);
       for (const candidate of candidates) {
-        const candidateIndex = meta.entries.findIndex((entry) => entry.id === candidate.id);
-        if (candidateIndex < 0) {
-          continue;
-        }
-        meta.entries[candidateIndex] = await this.refreshUsageForMeta(meta.entries[candidateIndex], codexHome);
-        if (isAvailableForSwitch(meta.entries[candidateIndex])) {
+        if (isAvailableForSwitch(candidate)) {
           await this.writeMeta(meta, codexHome);
-          await this.activateEntry(meta.entries[candidateIndex].id, codexHome, "auto");
+          await this.activateEntry(candidate.id, codexHome, "auto");
           return;
         }
       }
