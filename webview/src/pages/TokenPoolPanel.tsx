@@ -37,6 +37,17 @@ function formatPercent(value?: number): string {
   return `${Math.max(0, Math.min(100, value)).toFixed(0)}%`;
 }
 
+function buildUsageTooltip(entry: TokenPoolEntry): string {
+  if (!entry.usage) {
+    return "最近刷新：-\n5h 重置时间：-\n7d 重置时间：-";
+  }
+  return [
+    `最近刷新：${formatTime(entry.usage.fetchedAt)}`,
+    `5h 重置时间：${formatTime(entry.usage.fiveHour?.resetAt)}`,
+    `7d 重置时间：${formatTime(entry.usage.oneWeek?.resetAt)}`
+  ].join("\n");
+}
+
 function getPlanBadge(plan?: string): { label: string; tone: "neutral" | "good" | "caution" } | undefined {
   const normalized = plan?.trim().toLowerCase();
   if (!normalized) {
@@ -286,7 +297,9 @@ export function TokenPoolPanel(props: Props): JSX.Element {
                       {planBadge ? <span className={`plan-badge plan-badge-${planBadge.tone}`}>{planBadge.label}</span> : null}
                     </div>
                   </td>
-                  <td>{`${formatPercent(entry.usage?.fiveHour?.remainingPercent)}/${formatPercent(entry.usage?.oneWeek?.remainingPercent)}`}</td>
+                  <td title={buildUsageTooltip(entry)}>
+                    {`${formatPercent(entry.usage?.fiveHour?.remainingPercent)}/${formatPercent(entry.usage?.oneWeek?.remainingPercent)}`}
+                  </td>
                   <td>{statusLabel(entry)}</td>
                   <td>{entry.usage ? formatTime(entry.usage.fetchedAt) : "-"}</td>
                   <td className="accounts-actions-col">

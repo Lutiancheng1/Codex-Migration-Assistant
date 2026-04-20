@@ -1,12 +1,12 @@
 # Codex Migration Extension Handoff
 
-最后更新：2026-04-20（已按用户要求移除 Tauri/macOS 独立 app 架构，仓库重新收回为纯扩展主线；当前扩展版本 `1.0.5`）
+最后更新：2026-04-20（已按用户要求移除 Tauri/macOS 独立 app 架构，仓库重新收回为纯扩展主线；账号池 `5h/7d` 列已补 hover 提示；当前扩展版本 `1.0.6`）
 
 ## 项目快照
 
 - 项目名：`codex-migration-extension`
 - 展示名：`Codex 迁移助手`
-- 当前版本：`1.0.5`
+- 当前版本：`1.0.6`
 - 当前形态：VS Code / Codex Webview 扩展
 - 技术栈：TypeScript、React、VS Code Webview、Node.js 20+
 - 当前定位：面向 Codex 用户的账号切换、数据迁移、备份恢复、会话清理与用量查看
@@ -138,6 +138,22 @@ badge 来源优先使用：
 
 - `webview/src/pages/TokenPoolPanel.tsx`
 - `webview/src/styles.css`
+
+### 0.3.1 账号池 `5h/7d` 列已补充 hover 提示
+
+当前账号池表里的 `5h/7d` 列虽然已经压缩成 `xx%/yy%`，但为了不丢掉窗口重置时间，这一列现在补了原生 hover 提示。
+
+悬浮时会显示：
+
+- `最近刷新`
+- `5h 重置时间`
+- `7d 重置时间`
+
+这些时间都直接来自现有用量接口解析后的 `resetAt / fetchedAt`，不是额外推算。
+
+相关文件：
+
+- `webview/src/pages/TokenPoolPanel.tsx`
 
 ### 0.4 用量失败提示已做短消息归一化
 
