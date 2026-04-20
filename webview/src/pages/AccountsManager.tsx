@@ -107,7 +107,7 @@ export function AccountsManager(props: Props): JSX.Element {
   const [actionAnchorRect, setActionAnchorRect] = useState<DOMRect | undefined>();
   const [draggingProfileId, setDraggingProfileId] = useState<string>();
   const [dragOverProfileId, setDragOverProfileId] = useState<string>();
-  const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(5 * 60 * 1000);
+  const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(0);
   const [pendingCleanupMode, setPendingCleanupMode] = useState<ThreadCleanupApplyMode>();
   const [isTokenPoolExpanded, setIsTokenPoolExpanded] = useState<boolean>(sectionMode !== "accounts" && sectionMode !== "cleanup");
   const [isProfilesExpanded, setIsProfilesExpanded] = useState<boolean>(sectionMode === "accounts");
