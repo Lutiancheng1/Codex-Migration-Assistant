@@ -37,6 +37,20 @@ function formatPercent(value?: number): string {
   return `${Math.max(0, Math.min(100, value)).toFixed(0)}%`;
 }
 
+function getPlanBadge(plan?: string): { label: string; tone: "neutral" | "good" | "caution" } | undefined {
+  const normalized = plan?.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized.includes("team")) {
+    return { label: "TEAM", tone: "good" };
+  }
+  if (normalized.includes("free")) {
+    return { label: "FREE", tone: "neutral" };
+  }
+  return { label: plan!.trim().toUpperCase(), tone: "caution" };
+}
+
 function statusLabel(entry: TokenPoolEntry): string {
   switch (entry.status) {
     case "available":
@@ -211,6 +225,7 @@ export function TokenPoolPanel(props: Props): JSX.Element {
               const confirmDelete = pendingDeleteEntryId === entry.id;
               const isSwitchBlocked = isManualSwitchBlocked(entry);
               const isDragOver = dragOverEntryId === entry.id && draggingEntryId !== entry.id;
+              const planBadge = getPlanBadge(entry.usage?.planType || entry.planTypeHint);
               return (
                 <tr
                   key={entry.id}
@@ -266,9 +281,12 @@ export function TokenPoolPanel(props: Props): JSX.Element {
                     </button>
                   </td>
                   <td className="token-pool-account-col">
-                    <strong title={`${entry.email || entry.accountId}${entry.expired ? `\n过期时间: ${formatTime(entry.expired)}` : ""}`}>
-                      {entry.email || entry.accountId}
-                    </strong>
+                    <div className="token-pool-account-title">
+                      <strong title={`${entry.email || entry.accountId}${entry.expired ? `\n过期时间: ${formatTime(entry.expired)}` : ""}`}>
+                        {entry.email || entry.accountId}
+                      </strong>
+                      {planBadge ? <span className={`plan-badge plan-badge-${planBadge.tone}`}>{planBadge.label}</span> : null}
+                    </div>
                   </td>
                   <td>{entry.usage?.planType || entry.planTypeHint || "-"}</td>
                   <td>{formatPercent(entry.usage?.fiveHour?.remainingPercent)}</td>

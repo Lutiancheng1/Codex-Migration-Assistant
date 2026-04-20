@@ -1,6 +1,6 @@
 {
   "name": "@codex-migration/desktop-macos",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,6 +9,7 @@
     "build:sidecar": "node scripts/build-sidecar.mjs",
     "tauri:dev": "npm run build:sidecar && tauri dev",
     "tauri:build": "npm run build:sidecar && tauri build",
+    "release:unsigned": "npm run tauri:build || true && node scripts/build-release-artifacts.mjs",
     "generate:icons": "tauri icon assets/app-icon.svg -o src-tauri/icons"
   },
   "dependencies": {

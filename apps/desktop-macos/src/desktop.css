@@ -235,9 +235,413 @@
 .desktop-inspector-column,
 .desktop-migration-stack,
 .desktop-settings-stack,
-.result-card-stack {
+.result-card-stack,
+.desktop-panel-stack {
   display: grid;
   gap: 16px;
+}
+
+.desktop-inline-panel {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-radius: 22px;
+  border: 1px solid var(--mac-border);
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.desktop-inline-panel-main,
+.desktop-settings-inline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.desktop-dual-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.desktop-dual-grid-wide {
+  grid-template-columns: 1.15fr 0.85fr;
+}
+
+.desktop-form-card,
+.desktop-result-surface,
+.desktop-inline-note,
+.desktop-summary-card {
+  border-radius: 22px;
+  border: 1px solid var(--mac-border);
+  background: rgba(255, 255, 255, 0.42);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
+}
+
+.desktop-form-card,
+.desktop-result-surface {
+  padding: 16px;
+}
+
+.desktop-form-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.desktop-input-with-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+}
+
+.desktop-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.desktop-toggle-card {
+  justify-content: space-between;
+  min-height: 56px;
+  padding: 10px 12px;
+}
+
+.desktop-mini-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.desktop-mini-stat {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.desktop-mini-stat span {
+  color: var(--mac-subtle);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.desktop-mini-stat strong {
+  font-size: 22px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.desktop-result-headline,
+.desktop-result-footnote {
+  color: var(--mac-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.desktop-result-block {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.desktop-result-block p,
+.desktop-result-block strong,
+.desktop-summary-card p {
+  margin: 0;
+}
+
+.desktop-warning-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.desktop-card-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.desktop-summary-card {
+  padding: 14px;
+}
+
+.desktop-summary-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.desktop-summary-card-header span {
+  color: var(--mac-subtle);
+  font-size: 12px;
+}
+
+.desktop-compact-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--mac-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.desktop-compact-list code {
+  font-family: "SF Mono", "JetBrains Mono", ui-monospace, monospace;
+}
+
+.desktop-field {
+  display: grid;
+  gap: 8px;
+  min-width: 220px;
+}
+
+.desktop-field-inline {
+  min-width: 160px;
+}
+
+.desktop-field span,
+.desktop-toggle span {
+  color: var(--mac-subtle);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.desktop-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid var(--mac-border);
+  background: rgba(255, 255, 255, 0.38);
+}
+
+.desktop-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+
+.desktop-master-detail {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.48fr) minmax(0, 0.52fr);
+  gap: 16px;
+}
+
+.desktop-master-list,
+.desktop-detail-panel,
+.desktop-info-card {
+  border-radius: 22px;
+  border: 1px solid var(--mac-border);
+  background: rgba(255, 255, 255, 0.42);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
+}
+
+.desktop-master-list,
+.desktop-detail-panel {
+  padding: 16px;
+}
+
+.desktop-subsection-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.desktop-subsection-header h3,
+.desktop-info-card h4,
+.desktop-empty-state h3 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+}
+
+.desktop-subsection-header p,
+.desktop-empty-state p {
+  margin: 6px 0 0;
+  color: var(--mac-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.desktop-list-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.desktop-list-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(255, 255, 255, 0.5);
+  text-align: left;
+}
+
+.desktop-list-item.selected {
+  border-color: rgba(10, 132, 255, 0.16);
+  background: rgba(10, 132, 255, 0.1);
+}
+
+.desktop-list-item.current {
+  box-shadow: inset 0 0 0 1px rgba(47, 157, 98, 0.16);
+}
+
+.desktop-list-item-copy,
+.desktop-list-item-side {
+  display: grid;
+  gap: 6px;
+}
+
+.desktop-list-item-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.desktop-heading-with-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.desktop-list-item-title-row strong {
+  font-size: 14px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.desktop-list-item-meta {
+  color: var(--mac-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.desktop-list-item-side {
+  justify-items: end;
+}
+
+.desktop-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.desktop-badge-neutral {
+  background: rgba(15, 23, 42, 0.08);
+  color: var(--mac-muted);
+}
+
+.desktop-badge-good {
+  background: var(--mac-good-soft);
+  color: #1f6d45;
+}
+
+.desktop-badge-caution {
+  background: var(--mac-caution-soft);
+  color: #8c560f;
+}
+
+.desktop-badge-danger {
+  background: var(--mac-danger-soft);
+  color: #8f2f2f;
+}
+
+.desktop-mini-actions,
+.desktop-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.desktop-mini-actions button {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.desktop-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.desktop-info-card {
+  padding: 16px;
+}
+
+.desktop-info-card h4 {
+  margin-bottom: 12px;
+}
+
+.desktop-info-card dl {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.desktop-info-card dl > div {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.desktop-info-card dt {
+  color: var(--mac-subtle);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.desktop-info-card dd {
+  margin: 0;
+  color: var(--mac-ink);
+  font-size: 14px;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.desktop-empty-state {
+  display: grid;
+  gap: 8px;
+  min-height: 240px;
+  place-content: center;
+  text-align: center;
+  padding: 24px;
+}
+
+.desktop-empty-state.compact {
+  min-height: 160px;
 }
 
 .section-lead {
@@ -690,7 +1094,11 @@
 
   .metric-grid,
   .metric-grid-3,
-  .bento-grid {
+  .bento-grid,
+  .desktop-detail-grid,
+  .desktop-dual-grid,
+  .desktop-toggle-grid,
+  .desktop-mini-stat-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -702,7 +1110,9 @@
 @media (max-width: 1100px) {
   .desktop-toolbar-band,
   .desktop-topbar,
-  .section-lead {
+  .section-lead,
+  .desktop-inline-panel,
+  .desktop-master-detail {
     grid-template-columns: 1fr;
     display: grid;
   }
@@ -721,7 +1131,11 @@
   .metric-grid,
   .metric-grid-3,
   .bento-grid,
-  .desktop-inspector-column {
+  .desktop-inspector-column,
+  .desktop-detail-grid,
+  .desktop-dual-grid,
+  .desktop-toggle-grid,
+  .desktop-mini-stat-grid {
     grid-template-columns: 1fr;
   }
 
@@ -756,6 +1170,25 @@
 
   .section-lead h1 {
     font-size: 30px;
+  }
+
+  .desktop-inline-panel,
+  .desktop-master-list,
+  .desktop-detail-panel,
+  .desktop-info-card,
+  .desktop-form-card,
+  .desktop-result-surface,
+  .desktop-summary-card {
+    padding: 14px;
+  }
+
+  .desktop-info-card dl > div,
+  .definition-row {
+    grid-template-columns: 1fr;
+  }
+
+  .desktop-input-with-actions {
+    grid-template-columns: 1fr;
   }
 
   .desktop-embedded-surface .accounts-table th:nth-child(3),

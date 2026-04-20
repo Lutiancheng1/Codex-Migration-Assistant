@@ -1,12 +1,12 @@
 # Codex Migration Extension Handoff
 
-最后更新：2026-04-16（扩展版本升到 1.0.4，重打 VSIX；用量失败提示已收敛并拆分；桌面版已切到 Apple/macOS 风格新壳）
+最后更新：2026-04-20（账号池已修复同邮箱 free/team 导入互相覆盖，并在扩展/桌面端明确显示 FREE/TEAM 标签；扩展升到 1.0.5；桌面版仍停在 1.1.0 本地 unsigned 产物）
 
 ## 项目快照
 
 - 项目名：`codex-migration-extension`
 - 展示名：`Codex 迁移助手`
-- 当前版本：`1.0.4`
+- 当前版本：`1.0.5`
 - 形态：VS Code / Codex Webview 扩展
 - 技术栈：TypeScript、React、VS Code Webview、Node.js 20+
 - 目标：面向 Codex 用户的账号切换、数据迁移、备份恢复、会话清理与用量查看
@@ -133,6 +133,111 @@ token pool 已经不再按“直接改当前活动槽位 auth”理解，而是�
 - 只允许：
   - 当前激活池账号定时检测
   - 单条账号手动刷新额度
+
+### 0.1.6 账号池已修复同邮箱 free/team 导入互相覆盖
+
+本轮修复了一个明确的账号池导入 bug：
+
+- 之前 `TokenPoolService.upsertSecret` 用的是：
+  - 同 `accountId`
+  - 或同 `email`
+  就视为同一个条目
+- 这会导致 `cli-proxy` 导出的同邮箱双登录态（例如 free / team）在第二次导入时直接覆盖第一次
+
+现在的行为改成：
+
+- 账号池只会在“同一份 token 指纹”时覆盖旧条目
+  - `refreshToken`
+  - `idToken`
+  - `accessToken`
+- 只要 token 指纹不同，即使：
+  - `email` 相同
+  - `accountId` 相同
+  也允许同时作为两个独立条目存在
+
+同时补了“当前激活池条目”的识别逻辑：
+
+- 之前只看 `auth.json` 里的 `account_id`
+- 如果两个条目 `accountId` 一样，重开后可能把“当前条目”误认成列表里第一个
+- 现在会优先比对当前 `auth.json` 中的：
+  - `refresh_token`
+  - `id_token`
+  - `access_token`
+- 只有在精确 token 指纹匹配失败时，才退回到 `accountId`
+
+这意味着：
+
+- `cli-proxy` 的同邮箱 free/team 双账号现在可以共存
+- 重新导入完全相同的一份 token，仍然只会覆盖自身，不会无限复制
+
+本轮验证已通过：
+
+- `npm run build:ext`
+- `/usr/local/bin/node --test test/token-pool.test.mjs test/usage.test.mjs test/thread-cleanup.test.mjs`
+
+本轮新增测试：
+
+- `test/token-pool.test.mjs`
+  - 验证同邮箱 / 同 accountId / 不同 token 指纹时会保留两条
+  - 验证重复导入同一份 token 时仍然只覆盖自身
+
+相关文件：
+
+- `src/engine/tokenPool.ts`
+- `test/token-pool.test.mjs`
+
+### 0.1.7 账号池列表已明确显示 FREE / TEAM 标签
+
+在修好“同邮箱 free/team 不再互相覆盖”之后，这轮又补了列表识别层。
+
+之前虽然池内已经允许 free / team 共存，但在 UI 上仍然可能只看到：
+
+- 相同邮箱
+- 相同 accountId
+- 套餐列一眼看不清
+
+这会让用户误以为第二次导入还是把第一次覆盖掉了。
+
+现在的行为改成：
+
+- Webview 扩展里的账号池列表
+  - 在账号主标题右侧明确显示 `FREE` / `TEAM` badge
+- macOS 桌面版账号池列表与详情头部
+  - 同样显示 `FREE` / `TEAM` badge
+- badge 的来源优先使用：
+  - `usage.planType`
+  - 回退到 `planTypeHint`
+
+这样即使：
+
+- 邮箱相同
+- `accountId` 相同
+
+只要两个登录态的套餐类型不同，列表里也会直接区分成两条可见记录。
+
+本轮同时做了版本与交付收口：
+
+- 扩展版本升到 `1.0.5`
+- 新增 `.gitignore` 排除 `apps/desktop-macos/releases/`
+  - 避免本地桌面 release 产物误进 git
+
+本轮验证目标：
+
+- `npm run build:webview`
+- `npm run build:ext`
+- `/usr/local/bin/node --test test/token-pool.test.mjs test/usage.test.mjs test/thread-cleanup.test.mjs`
+- `npm run package:vsix`
+
+相关文件：
+
+- `webview/src/pages/TokenPoolPanel.tsx`
+- `webview/src/styles.css`
+- `apps/desktop-macos/src/components/DesktopTokenPoolPage.tsx`
+- `apps/desktop-macos/src/components/desktopUi.tsx`
+- `apps/desktop-macos/src/desktop.css`
+- `package.json`
+- `package-lock.json`
+- `.gitignore`
 
 ## 本轮新增修复（未提交）
 
@@ -329,6 +434,156 @@ token pool 已经不再按“直接改当前活动槽位 auth”理解，而是�
 - `apps/desktop-macos/src/desktop.css`
 - `src/desktop/runner.ts`
 - `src/engine/tokenPool.ts`
+
+### 0.1.4 桌面版账号页与账号池页已脱离共享组件
+
+第三阶段的第一步已经完成：桌面端最常用的两个页面不再通过共享 `AccountsManager / TokenPoolPanel` 渲染，而是改成了桌面专属组件。
+
+本轮新增：
+
+- `apps/desktop-macos/src/components/DesktopAccountsPage.tsx`
+  - 改成账号槽位 master-detail 布局
+  - 左侧槽位列表，右侧详情与操作
+  - 保留：
+    - 新增账号
+    - 刷新全部/单个用量
+    - 单独导出
+    - 导入到账号池
+    - 切换 / 合并 / 覆盖 / 删除
+    - 上移 / 下移排序
+- `apps/desktop-macos/src/components/DesktopTokenPoolPage.tsx`
+  - 改成账号池条目 master-detail 布局
+  - 保留：
+    - 导入单个 / 多个 / 目录
+    - 同步当前记录到 pool-runner
+    - 切换到 pool-runner
+    - 自动切换设置
+    - 单条刷新额度
+    - 切换条目
+    - 删除条目
+    - 上移 / 下移排序
+- `apps/desktop-macos/src/components/desktopUi.tsx`
+  - 收敛桌面端局部格式化与用量失败摘要 helper
+
+同时：
+
+- `apps/desktop-macos/src/App.tsx`
+  - `accounts` tab 已切到 `DesktopAccountsPage`
+  - `tokenPool` tab 已切到 `DesktopTokenPoolPage`
+- `apps/desktop-macos/src/desktop.css`
+  - 已补桌面原生列表、详情卡、设置行、badge、空态、master-detail 等样式
+
+本轮验证已通过：
+
+- `npm --workspace @codex-migration/desktop-macos run build`
+- `npm run build:ext`
+- `npm run build:desktop`
+
+当前还未完成的第三阶段任务：
+
+- `migration` 页仍复用共享 `ExportWizard / ImportWizard / PreviewResult`
+- `cleanup` 页仍复用共享 `AccountsManager`
+- 后续要继续把这两页也拆成桌面专属组件
+
+相关文件：
+
+- `apps/desktop-macos/src/components/DesktopAccountsPage.tsx`
+- `apps/desktop-macos/src/components/DesktopTokenPoolPage.tsx`
+- `apps/desktop-macos/src/components/desktopUi.tsx`
+- `apps/desktop-macos/src/App.tsx`
+- `apps/desktop-macos/src/desktop.css`
+
+### 0.1.5 桌面版迁移页、清理页与发布产物已继续收口
+
+第三阶段的后两页也已经切成桌面专属组件，不再走共享 `ExportWizard / ImportWizard / PreviewResult / AccountsManager`。
+
+本轮新增：
+
+- `apps/desktop-macos/src/components/DesktopMigrationPage.tsx`
+  - 导出与导入拆成双栏桌面表单
+  - 保留：
+    - 导出当前 / 全部账号
+    - `includeState / includeAuth`
+    - 预演导入
+    - 执行导入
+    - 导入到新账号槽位
+  - 已补快捷键：
+    - `Cmd/Ctrl + Enter` 触发导出或预演/导入
+- `apps/desktop-macos/src/components/DesktopCleanupPage.tsx`
+  - 会话 ID 输入、范围选择、预览摘要、执行结果全部改成桌面专属布局
+  - 保留：
+    - `preview`
+    - `restartLater`
+    - `killNow`
+    - `relaunchedClients / scheduledProfiles`
+  - 已补快捷键：
+    - `Cmd/Ctrl + Enter` 触发预览
+- `apps/desktop-macos/src/components/DesktopAccountsPage.tsx`
+  - 已补列表键盘导航：
+    - `ArrowUp / ArrowDown` 切换选中账号
+- `apps/desktop-macos/src/components/DesktopTokenPoolPage.tsx`
+  - 已补列表键盘导航：
+    - `ArrowUp / ArrowDown` 切换选中池账号
+
+版本与发布整理：
+
+- 桌面版版本已从 `1.0.2` 升到 `1.1.0`
+  - `apps/desktop-macos/package.json`
+  - `apps/desktop-macos/src-tauri/Cargo.toml`
+  - `apps/desktop-macos/src-tauri/tauri.conf.json`
+- 新增 `apps/desktop-macos/scripts/build-release-artifacts.mjs`
+  - 直接从 `.app` 生成 unsigned `.zip / .dmg / .sha256 / RELEASE_NOTES.txt`
+  - 用来绕开 Tauri 默认 `bundle_dmg.sh` 在某些机器上不稳定的问题
+- 本地发布目录已生成：
+  - `apps/desktop-macos/releases/1.1.0/`
+  - 包含：
+    - `Codex Migration Assistant_1.1.0_aarch64.zip`
+    - `Codex Migration Assistant_1.1.0_aarch64.dmg`
+    - `Codex Migration Assistant_1.1.0_aarch64.sha256`
+    - `RELEASE_NOTES.txt`
+
+本轮验证已通过：
+
+- `npm --workspace @codex-migration/desktop-macos run build`
+- `npm run build:ext`
+- `npm --workspace @codex-migration/desktop-macos run tauri:build`
+- `node apps/desktop-macos/scripts/build-release-artifacts.mjs`
+- bundle 内 sidecar 烟测：
+  - `initAppState`
+  - `previewThreadCleanup`
+
+当前本地产物：
+
+- `.app`
+  - `apps/desktop-macos/src-tauri/target/release/bundle/macos/Codex Migration Assistant.app`
+- Tauri 产物 `.dmg`
+  - `apps/desktop-macos/src-tauri/target/release/bundle/dmg/Codex Migration Assistant_1.1.0_aarch64.dmg`
+- 发布目录产物
+  - `apps/desktop-macos/releases/1.1.0/Codex Migration Assistant_1.1.0_aarch64.zip`
+  - `apps/desktop-macos/releases/1.1.0/Codex Migration Assistant_1.1.0_aarch64.dmg`
+  - `apps/desktop-macos/releases/1.1.0/Codex Migration Assistant_1.1.0_aarch64.sha256`
+
+当前仍然阻塞的只有发布级凭据：
+
+- 本机 `security find-identity -v -p codesigning` 结果为 `0 valid identities found`
+- 当前环境也未发现 Apple notarization 所需凭据变量
+- 因此：
+  - 已完成本地 unsigned release 整理
+  - 未完成 Apple 签名 / 公证 / stapling
+
+相关文件：
+
+- `apps/desktop-macos/src/components/DesktopMigrationPage.tsx`
+- `apps/desktop-macos/src/components/DesktopCleanupPage.tsx`
+- `apps/desktop-macos/src/components/DesktopAccountsPage.tsx`
+- `apps/desktop-macos/src/components/DesktopTokenPoolPage.tsx`
+- `apps/desktop-macos/src/App.tsx`
+- `apps/desktop-macos/src/desktop.css`
+- `apps/desktop-macos/package.json`
+- `apps/desktop-macos/src-tauri/Cargo.toml`
+- `apps/desktop-macos/src-tauri/tauri.conf.json`
+- `apps/desktop-macos/scripts/build-release-artifacts.mjs`
+- `package-lock.json`
 
 ### 0.1.2 VSIX 打包已补忽略规则
 

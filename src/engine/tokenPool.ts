@@ -276,6 +276,13 @@ type PoolRunnerProfileRef = {
   active: boolean;
 };
 
+type AuthTokenFingerprint = {
+  accountId?: string;
+  accessToken?: string;
+  idToken?: string;
+  refreshToken?: string;
+};
+
 async function resolvePoolRunnerProfile(codexHome: string, ensure = false): Promise<PoolRunnerProfileRef | undefined> {
   if (ensure) {
     await ensureProfileSlot(codexHome, POOL_RUNNER_PROFILE_ID, POOL_RUNNER_PROFILE_NAME);
@@ -291,7 +298,7 @@ async function resolvePoolRunnerProfile(codexHome: string, ensure = false): Prom
   };
 }
 
-async function readCurrentAuthAccountId(profilePath: string): Promise<string | undefined> {
+async function readCurrentAuthFingerprint(profilePath: string): Promise<AuthTokenFingerprint | undefined> {
   const authPath = path.join(profilePath, "auth.json");
   const st = await statSafe(authPath);
   if (!st?.isFile()) {
@@ -300,12 +307,13 @@ async function readCurrentAuthAccountId(profilePath: string): Promise<string | u
   try {
     const raw = JSON.parse(await fs.readFile(authPath, "utf8")) as Record<string, unknown>;
     const tokens = (raw.tokens && typeof raw.tokens === "object" ? raw.tokens : undefined) as Record<string, unknown> | undefined;
-    const direct = safeTrim(tokens?.account_id);
-    if (direct) {
-      return direct;
-    }
     const idToken = safeTrim(tokens?.id_token);
-    return idToken ? extractAccountIdFromClaims(decodeJwtPayload(idToken)) : undefined;
+    return {
+      accountId: safeTrim(tokens?.account_id) ?? (idToken ? extractAccountIdFromClaims(decodeJwtPayload(idToken)) : undefined),
+      accessToken: safeTrim(tokens?.access_token),
+      idToken,
+      refreshToken: safeTrim(tokens?.refresh_token)
+    };
   } catch {
     return undefined;
   }
@@ -472,9 +480,33 @@ class TokenPoolService implements DisposableLike {
 
   private async detectActiveEntryId(codexHome: string, meta: TokenPoolMetadata): Promise<string | undefined> {
     const poolRunner = await resolvePoolRunnerProfile(codexHome);
-    const currentAccountId = poolRunner ? await readCurrentAuthAccountId(poolRunner.path) : undefined;
+    const fingerprint = poolRunner ? await readCurrentAuthFingerprint(poolRunner.path) : undefined;
+    if (!fingerprint?.accountId && !fingerprint?.refreshToken && !fingerprint?.idToken && !fingerprint?.accessToken) {
+      return meta.activeEntryId;
+    }
+    const secrets = await this.readSecrets(codexHome);
+    const exactMatch = meta.entries.find((entry) => {
+      const secret = secrets[entry.id];
+      if (!secret) {
+        return false;
+      }
+      return (
+        (!!fingerprint?.refreshToken && secret.refreshToken === fingerprint.refreshToken) ||
+        (!!fingerprint?.idToken && secret.idToken === fingerprint.idToken) ||
+        (!!fingerprint?.accessToken && secret.accessToken === fingerprint.accessToken)
+      );
+    });
+    if (exactMatch) {
+      return exactMatch.id;
+    }
+
+    const currentAccountId = fingerprint?.accountId;
     if (!currentAccountId) {
       return meta.activeEntryId;
+    }
+    const preferredActive = meta.activeEntryId ? meta.entries.find((entry) => entry.id === meta.activeEntryId) : undefined;
+    if (preferredActive?.accountId === currentAccountId) {
+      return preferredActive.id;
     }
     const matched = meta.entries.find((entry) => entry.accountId === currentAccountId);
     return matched?.id ?? meta.activeEntryId;
@@ -502,8 +534,23 @@ class TokenPoolService implements DisposableLike {
     return meta.entries.some((entry) => entry.id === entryId);
   }
 
+  private findDuplicateEntryIndex(meta: TokenPoolMetadata, secrets: TokenPoolSecretMap, secret: TokenPoolSecret): number {
+    return meta.entries.findIndex((entry) => {
+      const existing = secrets[entry.id];
+      if (!existing) {
+        return false;
+      }
+      return (
+        existing.refreshToken === secret.refreshToken ||
+        existing.idToken === secret.idToken ||
+        existing.accessToken === secret.accessToken
+      );
+    });
+  }
+
   private async upsertSecret(meta: TokenPoolMetadata, secret: TokenPoolSecret, codexHomeOverride?: string, overrides?: Partial<Pick<TokenPoolEntryMeta, "email" | "type" | "planTypeHint">>): Promise<"imported" | "replaced"> {
-    const duplicateIndex = meta.entries.findIndex((entry) => entry.accountId === secret.accountId || (!!secret.email && entry.email === secret.email));
+    const secrets = await this.readSecrets(codexHomeOverride);
+    const duplicateIndex = this.findDuplicateEntryIndex(meta, secrets, secret);
     const nextMeta: TokenPoolEntryMeta = {
       id: duplicateIndex >= 0 ? meta.entries[duplicateIndex].id : `${secret.accountId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       email: overrides?.email ?? secret.email,

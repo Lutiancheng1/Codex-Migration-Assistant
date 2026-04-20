@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { AccountsManager, ExportWizard, ImportWizard, PreviewResult } from "@codex-migration/shared-ui";
 import type {
   DesktopTab,
   ExportResult,
@@ -17,6 +16,10 @@ import type {
   TokenPoolSnapshot
 } from "@codex-migration/shared-contracts";
 import { runDesktopCommand } from "./lib/desktopClient";
+import { DesktopAccountsPage } from "./components/DesktopAccountsPage";
+import { DesktopCleanupPage } from "./components/DesktopCleanupPage";
+import { DesktopMigrationPage } from "./components/DesktopMigrationPage";
+import { DesktopTokenPoolPage } from "./components/DesktopTokenPoolPage";
 import "./desktop.css";
 
 type ResultData = ExportResult | ImportResult | PreviewResultType | SwitchProfileResult | ThreadCleanupPreviewResult | ThreadCleanupResult;
@@ -105,6 +108,8 @@ const TAB_META: Array<{ id: DesktopTab; label: string; detail: string }> = [
   { id: "cleanup", label: "对话清理", detail: "会话维护" },
   { id: "settings", label: "设置", detail: "目录与状态" }
 ];
+
+const DESKTOP_APP_VERSION = "1.1.0";
 
 function parseThreadIds(input: string): string[] {
   const seen = new Set<string>();
@@ -521,6 +526,36 @@ export default function App(): JSX.Element {
     onRefresh: () => void refresh()
   };
 
+  function moveProfile(profileId: string, direction: "up" | "down"): void {
+    const orderedIds = state.profiles.map((item) => item.id);
+    const currentIndex = orderedIds.indexOf(profileId);
+    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= orderedIds.length) {
+      return;
+    }
+    const nextIds = [...orderedIds];
+    const [moved] = nextIds.splice(currentIndex, 1);
+    nextIds.splice(targetIndex, 0, moved);
+    void runCommand({ command: "reorderProfiles", payload: { codexHome: state.codexHome, orderedIds: nextIds } }, { progressMessage: "保存账号顺序" });
+  }
+
+  function moveTokenPoolEntry(entryId: string, direction: "up" | "down"): void {
+    const orderedIds = state.tokenPool.entries.map((item) => item.id);
+    const currentIndex = orderedIds.indexOf(entryId);
+    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= orderedIds.length) {
+      return;
+    }
+    const nextIds = [...orderedIds];
+    const [moved] = nextIds.splice(currentIndex, 1);
+    nextIds.splice(targetIndex, 0, moved);
+    void runCommand({ command: "reorderTokenPoolEntries", payload: { codexHome: state.codexHome, orderedIds: nextIds } }, { progressMessage: "更新池账号顺序" });
+  }
+
+  const latestPreviewResult = isImportResult(state.lastResult) ? undefined : ((state.lastResult && "sessions" in state.lastResult && "backupZip" in state.lastResult && !("reportPath" in state.lastResult)) ? state.lastResult as PreviewResultType : undefined);
+  const latestExportResult = isExportResult(state.lastResult) ? state.lastResult : undefined;
+  const latestImportResult = isImportResult(state.lastResult) ? state.lastResult : undefined;
+
   const sharedSidebar = (
     <>
       <ProgressCard percent={state.progressPercent} message={state.progressMessage} />
@@ -705,32 +740,21 @@ export default function App(): JSX.Element {
               </div>
 
               <SurfaceCard className="desktop-embedded-surface" title="账号槽位控制台" subtitle="适合桌面宽窗口的槽位管理、切换和导出。">
-                <AccountsManager
-                  {...commonAccountsProps}
-                  sectionMode="accounts"
+                <DesktopAccountsPage
+                  codexHome={state.codexHome}
+                  profilesRoot={state.profilesRoot}
+                  profiles={state.profiles}
+                  activeProfileId={state.activeProfileId}
+                  backupBeforeSwitch={state.backupBeforeSwitch}
+                  newProfileName={state.newProfileName}
+                  onChange={onChange}
+                  onRefresh={() => void refresh()}
                   onRefreshUsage={(profileId) =>
                     void runCommand(
                       { command: "refreshProfileUsage", payload: { codexHome: state.codexHome, profileId } },
                       { progressMessage: "刷新账号用量" }
                     )}
-                  onImportTokenPoolSingle={() => {}}
-                  onImportTokenPoolMultiple={() => {}}
-                  onImportTokenPoolDirectory={() => {}}
-                  onImportProfileToTokenPool={(profileId) =>
-                    void runCommand({ command: "importProfileToTokenPool", payload: { codexHome: state.codexHome, profileId } }, { progressMessage: "导入账号到池" })}
-                  onSyncCurrentToPoolRunner={() =>
-                    void runCommand({ command: "syncCurrentToPoolRunner", payload: { codexHome: state.codexHome } }, { progressMessage: "同步到 pool-runner" })}
-                  onSwitchToPoolRunner={() =>
-                    void runCommand(
-                      { command: "switchToPoolRunner", payload: { codexHome: state.codexHome, backupCurrent: state.backupBeforeSwitch } },
-                      { progressMessage: "切换到 pool-runner" }
-                    )}
-                  onRefreshTokenPoolEntry={() => {}}
-                  onActivateTokenPoolEntry={() => {}}
-                  onDeleteTokenPoolEntry={() => {}}
-                  onMoveTokenPoolEntry={() => {}}
-                  onReorderTokenPoolEntries={() => {}}
-                  onUpdateTokenPoolSettings={() => {}}
+                  onCreate={() => void runCommand({ command: "createProfile", payload: { codexHome: state.codexHome, name: state.newProfileName } }, { progressMessage: "新建账号" })}
                   onExportProfile={(profileId) =>
                     void runCommand<ExportResult>(
                       {
@@ -747,7 +771,8 @@ export default function App(): JSX.Element {
                       },
                       { progressMessage: "导出账号", onSuccess: (data) => ({ lastResult: data as ResultData }) }
                     )}
-                  onCreate={() => void runCommand({ command: "createProfile", payload: { codexHome: state.codexHome, name: state.newProfileName } }, { progressMessage: "新建账号" })}
+                  onImportProfileToTokenPool={(profileId) =>
+                    void runCommand({ command: "importProfileToTokenPool", payload: { codexHome: state.codexHome, profileId } }, { progressMessage: "导入账号到池" })}
                   onActivate={(profileId) =>
                     void runCommand<SwitchProfileResult>(
                       { command: "activateProfile", payload: { codexHome: state.codexHome, profileId, backupCurrent: state.backupBeforeSwitch, switchMode: "plain" } },
@@ -764,10 +789,7 @@ export default function App(): JSX.Element {
                       { progressMessage: "切换并覆盖", onSuccess: (data) => ({ lastResult: data as ResultData }) }
                     )}
                   onDelete={(profileId) => void runCommand({ command: "deleteProfile", payload: { codexHome: state.codexHome, profileId } }, { progressMessage: "删除账号" })}
-                  onReorderProfiles={(orderedIds) =>
-                    void runCommand({ command: "reorderProfiles", payload: { codexHome: state.codexHome, orderedIds } }, { progressMessage: "保存账号顺序" })}
-                  onPreviewThreadCleanup={() => {}}
-                  onStartThreadCleanup={() => {}}
+                  onMoveProfile={moveProfile}
                 />
               </SurfaceCard>
             </section>
@@ -817,68 +839,46 @@ export default function App(): JSX.Element {
               </div>
 
               <SurfaceCard className="desktop-embedded-surface" title="账号池控制台" subtitle="导入、单条刷新、排序、切换和自动化设置都留在桌面端的大视图里。">
-                <AccountsManager
-                  {...commonAccountsProps}
-                  sectionMode="tokenPool"
-                  onRefreshUsage={() => {}}
-                  onImportTokenPoolSingle={() =>
+                <DesktopTokenPoolPage
+                  codexHome={state.codexHome}
+                  tokenPool={state.tokenPool}
+                  activeProfileId={state.activeProfileId}
+                  activeProfileName={activeProfile?.name}
+                  poolRunnerProfile={state.profiles.find((item) => item.id === "pool-runner")}
+                  onImportSingle={() =>
                     void (async () => {
                       const result = await open({ multiple: false, filters: [{ name: "JSON", extensions: ["json"] }] });
                       if (typeof result === "string") {
                         await runCommand({ command: "importTokenPoolFiles", payload: { codexHome: state.codexHome, filePaths: [result] } }, { progressMessage: "导入单个 token" });
                       }
                     })()}
-                  onImportTokenPoolMultiple={() =>
+                  onImportMultiple={() =>
                     void (async () => {
                       const result = await open({ multiple: true, filters: [{ name: "JSON", extensions: ["json"] }] });
                       if (Array.isArray(result) && result.length > 0) {
                         await runCommand({ command: "importTokenPoolFiles", payload: { codexHome: state.codexHome, filePaths: result as string[] } }, { progressMessage: "导入多个 token" });
                       }
                     })()}
-                  onImportTokenPoolDirectory={() =>
+                  onImportDirectory={() =>
                     void (async () => {
                       const directoryPath = await pickDirectory("tokenDir");
                       if (directoryPath) {
                         await runCommand({ command: "importTokenPoolDirectory", payload: { codexHome: state.codexHome, directoryPath } }, { progressMessage: "导入 token 目录" });
                       }
                     })()}
-                  onImportProfileToTokenPool={(profileId) =>
-                    void runCommand({ command: "importProfileToTokenPool", payload: { codexHome: state.codexHome, profileId } }, { progressMessage: "导入当前账号到池" })}
                   onSyncCurrentToPoolRunner={() =>
                     void runCommand({ command: "syncCurrentToPoolRunner", payload: { codexHome: state.codexHome } }, { progressMessage: "同步 pool-runner" })}
                   onSwitchToPoolRunner={() =>
                     void runCommand({ command: "switchToPoolRunner", payload: { codexHome: state.codexHome, backupCurrent: state.backupBeforeSwitch } }, { progressMessage: "切换到 pool-runner" })}
-                  onRefreshTokenPoolEntry={(entryId) =>
+                  onRefreshEntry={(entryId) =>
                     void runCommand({ command: "refreshTokenPoolEntryUsage", payload: { codexHome: state.codexHome, entryId } }, { progressMessage: "刷新池账号额度" })}
-                  onActivateTokenPoolEntry={(entryId) =>
+                  onActivateEntry={(entryId) =>
                     void runCommand({ command: "activateTokenPoolEntry", payload: { codexHome: state.codexHome, entryId } }, { progressMessage: "切换池账号" })}
-                  onDeleteTokenPoolEntry={(entryId) =>
+                  onDeleteEntry={(entryId) =>
                     void runCommand({ command: "deleteTokenPoolEntry", payload: { codexHome: state.codexHome, entryId } }, { progressMessage: "删除池账号" })}
-                  onMoveTokenPoolEntry={(entryId, direction) => {
-                    const orderedIds = state.tokenPool.entries.map((item) => item.id);
-                    const currentIndex = orderedIds.indexOf(entryId);
-                    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
-                    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= orderedIds.length) {
-                      return;
-                    }
-                    const nextIds = [...orderedIds];
-                    const [moved] = nextIds.splice(currentIndex, 1);
-                    nextIds.splice(targetIndex, 0, moved);
-                    void runCommand({ command: "reorderTokenPoolEntries", payload: { codexHome: state.codexHome, orderedIds: nextIds } }, { progressMessage: "更新池账号顺序" });
-                  }}
-                  onReorderTokenPoolEntries={(orderedIds) =>
-                    void runCommand({ command: "reorderTokenPoolEntries", payload: { codexHome: state.codexHome, orderedIds } }, { progressMessage: "保存池顺序" })}
-                  onUpdateTokenPoolSettings={(next) =>
+                  onMoveEntry={moveTokenPoolEntry}
+                  onUpdateSettings={(next) =>
                     void runCommand({ command: "setTokenPoolSettings", payload: { codexHome: state.codexHome, ...next } }, { progressMessage: "保存账号池设置" })}
-                  onExportProfile={() => {}}
-                  onCreate={() => {}}
-                  onActivate={() => {}}
-                  onActivateAndMerge={() => {}}
-                  onActivateAndOverwrite={() => {}}
-                  onDelete={() => {}}
-                  onReorderProfiles={() => {}}
-                  onPreviewThreadCleanup={() => {}}
-                  onStartThreadCleanup={() => {}}
                 />
               </SurfaceCard>
             </section>
@@ -920,115 +920,106 @@ export default function App(): JSX.Element {
                 }
               />
 
-              <div className="desktop-migration-stack">
-                <SurfaceCard className="desktop-embedded-surface" title="导出" subtitle="保持原有功能，但放进更适合桌面宽屏的表单块。">
-                  <ExportWizard
-                    codexHome={state.codexHome}
-                    outputDir={state.outputDir}
-                    exportScope={state.exportScope}
-                    includeState={state.includeState}
-                    includeAuth={state.includeAuth}
-                    onChange={onChange}
-                    onPickOutputDir={() =>
-                      void (async () => {
-                        const outputDir = await pickDirectory("outputDir");
-                        if (outputDir) {
-                          onChange("outputDir", outputDir);
-                        }
-                      })()}
-                    onOpenOutputDir={() => void openPath(state.outputDir || state.defaultOutputDir)}
-                    onRun={() =>
-                      void runCommand<ExportResult>(
-                        {
-                          command: "startExport",
-                          payload: {
-                            codexHome: state.codexHome,
-                            outputDir: state.outputDir || state.defaultOutputDir,
-                            includeState: state.includeState,
-                            includeAuth: state.includeAuth,
-                            mode: "enhanced",
-                            scope: state.exportScope
-                          }
-                        },
-                        { progressMessage: "执行导出", onSuccess: (data) => ({ lastResult: data as ResultData }) }
-                      )}
-                  />
-                </SurfaceCard>
-
-                <SurfaceCard className="desktop-embedded-surface" title="导入" subtitle="预演、覆盖 state、导入 auth 和导入到新槽位都继续支持。">
-                  <ImportWizard
-                    codexHome={state.codexHome}
-                    backupZip={state.backupZip}
-                    importProfileName={state.importProfileName}
-                    replaceState={state.replaceState}
-                    importAuth={state.importAuth}
-                    onChange={onChange}
-                    onPickZip={() =>
-                      void (async () => {
-                        const zipPath = await pickZip();
-                        if (zipPath) {
-                          onChange("backupZip", zipPath);
-                        }
-                      })()}
-                    onPickZipFromDefault={() =>
-                      void (async () => {
-                        const zipPath = await pickZip();
-                        if (zipPath) {
-                          onChange("backupZip", zipPath);
-                        }
-                      })()}
-                    onPreview={() =>
-                      void runCommand<PreviewResultType>(
-                        {
-                          command: "previewImport",
-                          payload: {
-                            codexHome: state.codexHome,
-                            backupZip: state.backupZip,
-                            replaceState: state.replaceState,
-                            importAuth: state.importAuth,
-                            mode: "enhanced"
-                          }
-                        },
-                        { progressMessage: "预演导入", onSuccess: (data) => ({ lastResult: data as ResultData }) }
-                      )}
-                    onRunImport={() =>
-                      void runCommand<ImportResult>(
-                        {
-                          command: "startImport",
-                          payload: {
-                            codexHome: state.codexHome,
-                            backupZip: state.backupZip,
-                            replaceState: state.replaceState,
-                            importAuth: state.importAuth,
-                            mode: "enhanced"
-                          }
-                        },
-                        { progressMessage: "执行导入", onSuccess: (data) => ({ lastResult: data as ResultData }) }
-                      )}
-                    onRunImportToNewProfile={() =>
-                      void runCommand<ImportResult>(
-                        {
-                          command: "startImportToNewProfile",
-                          payload: {
-                            codexHome: state.codexHome,
-                            backupZip: state.backupZip,
-                            replaceState: state.replaceState,
-                            importAuth: state.importAuth,
-                            mode: "enhanced",
-                            profileName: state.importProfileName
-                          }
-                        },
-                        { progressMessage: "导入到新账号", onSuccess: (data) => ({ lastResult: data as ResultData }) }
-                      )}
-                  />
-                </SurfaceCard>
-              </div>
+              <DesktopMigrationPage
+                codexHome={state.codexHome}
+                outputDir={state.outputDir}
+                defaultOutputDir={state.defaultOutputDir}
+                exportScope={state.exportScope}
+                includeState={state.includeState}
+                includeAuth={state.includeAuth}
+                backupZip={state.backupZip}
+                importProfileName={state.importProfileName}
+                replaceState={state.replaceState}
+                importAuth={state.importAuth}
+                previewData={latestPreviewResult}
+                exportResult={latestExportResult}
+                importResult={latestImportResult}
+                errorMessage={tab === "migration" ? state.lastError : undefined}
+                onChange={onChange}
+                onPickOutputDir={() =>
+                  void (async () => {
+                    const outputDir = await pickDirectory("outputDir");
+                    if (outputDir) {
+                      onChange("outputDir", outputDir);
+                    }
+                  })()}
+                onOpenOutputDir={() => void openPath(state.outputDir || state.defaultOutputDir)}
+                onPickZip={() =>
+                  void (async () => {
+                    const zipPath = await pickZip();
+                    if (zipPath) {
+                      onChange("backupZip", zipPath);
+                    }
+                  })()}
+                onPickZipFromDefault={() =>
+                  void (async () => {
+                    const zipPath = await pickZip();
+                    if (zipPath) {
+                      onChange("backupZip", zipPath);
+                    }
+                  })()}
+                onRunExport={() =>
+                  void runCommand<ExportResult>(
+                    {
+                      command: "startExport",
+                      payload: {
+                        codexHome: state.codexHome,
+                        outputDir: state.outputDir || state.defaultOutputDir,
+                        includeState: state.includeState,
+                        includeAuth: state.includeAuth,
+                        mode: "enhanced",
+                        scope: state.exportScope
+                      }
+                    },
+                    { progressMessage: "执行导出", onSuccess: (data) => ({ lastResult: data as ResultData }) }
+                  )}
+                onPreviewImport={() =>
+                  void runCommand<PreviewResultType>(
+                    {
+                      command: "previewImport",
+                      payload: {
+                        codexHome: state.codexHome,
+                        backupZip: state.backupZip,
+                        replaceState: state.replaceState,
+                        importAuth: state.importAuth,
+                        mode: "enhanced"
+                      }
+                    },
+                    { progressMessage: "预演导入", onSuccess: (data) => ({ lastResult: data as ResultData }) }
+                  )}
+                onRunImport={() =>
+                  void runCommand<ImportResult>(
+                    {
+                      command: "startImport",
+                      payload: {
+                        codexHome: state.codexHome,
+                        backupZip: state.backupZip,
+                        replaceState: state.replaceState,
+                        importAuth: state.importAuth,
+                        mode: "enhanced"
+                      }
+                    },
+                    { progressMessage: "执行导入", onSuccess: (data) => ({ lastResult: data as ResultData }) }
+                  )}
+                onRunImportToNewProfile={() =>
+                  void runCommand<ImportResult>(
+                    {
+                      command: "startImportToNewProfile",
+                      payload: {
+                        codexHome: state.codexHome,
+                        backupZip: state.backupZip,
+                        replaceState: state.replaceState,
+                        importAuth: state.importAuth,
+                        mode: "enhanced",
+                        profileName: state.importProfileName
+                      }
+                    },
+                    { progressMessage: "导入到新账号", onSuccess: (data) => ({ lastResult: data as ResultData }) }
+                  )}
+              />
             </section>
 
             <aside className="desktop-inspector-column">
-              <SurfaceCard title="预演摘要" subtitle="这里保留最近一次预演的冲突统计和采样。">
-                <PreviewResult data={state.lastResult as PreviewResultType | undefined} />
-              </SurfaceCard>
               {sharedSidebar}
             </aside>
           </main>
@@ -1055,61 +1046,45 @@ export default function App(): JSX.Element {
                   </>
                 }
               />
-
-              <SurfaceCard className="desktop-embedded-surface" title="会话清理控制台" subtitle="支持按会话 ID 在当前账号、指定账号或全部账号里查找后执行。">
-                <AccountsManager
-                  {...commonAccountsProps}
-                  sectionMode="cleanup"
-                  onRefreshUsage={() => {}}
-                  onImportTokenPoolSingle={() => {}}
-                  onImportTokenPoolMultiple={() => {}}
-                  onImportTokenPoolDirectory={() => {}}
-                  onImportProfileToTokenPool={() => {}}
-                  onSyncCurrentToPoolRunner={() => {}}
-                  onSwitchToPoolRunner={() => {}}
-                  onRefreshTokenPoolEntry={() => {}}
-                  onActivateTokenPoolEntry={() => {}}
-                  onDeleteTokenPoolEntry={() => {}}
-                  onMoveTokenPoolEntry={() => {}}
-                  onReorderTokenPoolEntries={() => {}}
-                  onUpdateTokenPoolSettings={() => {}}
-                  onExportProfile={() => {}}
-                  onCreate={() => {}}
-                  onActivate={() => {}}
-                  onActivateAndMerge={() => {}}
-                  onActivateAndOverwrite={() => {}}
-                  onDelete={() => {}}
-                  onReorderProfiles={() => {}}
-                  onPreviewThreadCleanup={() =>
-                    void runCommand<ThreadCleanupPreviewResult>(
-                      {
-                        command: "previewThreadCleanup",
-                        payload: {
-                          codexHome: state.codexHome,
-                          threadIds: parseThreadIds(state.threadCleanupInput),
-                          scope: state.threadCleanupScope,
-                          profileId: state.threadCleanupScope === "single" ? state.threadCleanupProfileId : undefined
-                        }
-                      },
-                      { progressMessage: "预览清理范围", onSuccess: (data) => ({ threadCleanupPreview: data, lastResult: data as ResultData }) }
-                    )}
-                  onStartThreadCleanup={(applyMode: ThreadCleanupApplyMode) =>
-                    void runCommand<ThreadCleanupResult>(
-                      {
-                        command: "startThreadCleanup",
-                        payload: {
-                          codexHome: state.codexHome,
-                          threadIds: parseThreadIds(state.threadCleanupInput),
-                          scope: state.threadCleanupScope,
-                          profileId: state.threadCleanupScope === "single" ? state.threadCleanupProfileId : undefined,
-                          backupEnabled: state.threadCleanupBackupEnabled,
-                          applyMode
-                        }
-                      },
-                      { progressMessage: "执行对话清理", onSuccess: (data) => ({ threadCleanupResult: data, lastResult: data as ResultData }) }
-                    )}
-                />
-              </SurfaceCard>
+              <DesktopCleanupPage
+                profiles={state.profiles}
+                threadCleanupInput={state.threadCleanupInput}
+                threadCleanupScope={state.threadCleanupScope}
+                threadCleanupProfileId={state.threadCleanupProfileId}
+                threadCleanupBackupEnabled={state.threadCleanupBackupEnabled}
+                preview={state.threadCleanupPreview}
+                result={state.threadCleanupResult}
+                errorMessage={tab === "cleanup" ? state.lastError : undefined}
+                onChange={onChange}
+                onPreview={() =>
+                  void runCommand<ThreadCleanupPreviewResult>(
+                    {
+                      command: "previewThreadCleanup",
+                      payload: {
+                        codexHome: state.codexHome,
+                        threadIds: parseThreadIds(state.threadCleanupInput),
+                        scope: state.threadCleanupScope,
+                        profileId: state.threadCleanupScope === "single" ? state.threadCleanupProfileId : undefined
+                      }
+                    },
+                    { progressMessage: "预览清理范围", onSuccess: (data) => ({ threadCleanupPreview: data, lastResult: data as ResultData }) }
+                  )}
+                onStart={(applyMode: ThreadCleanupApplyMode) =>
+                  void runCommand<ThreadCleanupResult>(
+                    {
+                      command: "startThreadCleanup",
+                      payload: {
+                        codexHome: state.codexHome,
+                        threadIds: parseThreadIds(state.threadCleanupInput),
+                        scope: state.threadCleanupScope,
+                        profileId: state.threadCleanupScope === "single" ? state.threadCleanupProfileId : undefined,
+                        backupEnabled: state.threadCleanupBackupEnabled,
+                        applyMode
+                      }
+                    },
+                    { progressMessage: "执行对话清理", onSuccess: (data) => ({ threadCleanupResult: data, lastResult: data as ResultData }) }
+                  )}
+              />
             </section>
 
             <aside className="desktop-inspector-column">
@@ -1171,8 +1146,10 @@ export default function App(): JSX.Element {
                 <SurfaceCard title="桌面版产物">
                   <DefinitionList
                     items={[
+                      { label: "桌面版本", value: DESKTOP_APP_VERSION },
                       { label: "App", value: "apps/desktop-macos/src-tauri/target/release/bundle/macos/Codex Migration Assistant.app" },
-                      { label: "DMG", value: "apps/desktop-macos/src-tauri/target/release/bundle/dmg/Codex Migration Assistant_1.0.2_aarch64.dmg" }
+                      { label: "本地发布目录", value: `apps/desktop-macos/releases/${DESKTOP_APP_VERSION}` },
+                      { label: "DMG", value: `apps/desktop-macos/releases/${DESKTOP_APP_VERSION}/Codex Migration Assistant_${DESKTOP_APP_VERSION}_aarch64.dmg` }
                     ]}
                   />
                 </SurfaceCard>

@@ -676,10 +676,45 @@ td {
   max-width: 320px;
 }
 
+.token-pool-table .token-pool-account-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .token-pool-table .token-pool-account-col strong {
   display: block;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.plan-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.plan-badge-neutral {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--muted);
+}
+
+.plan-badge-good {
+  background: color-mix(in srgb, var(--good) 18%, transparent);
+  color: color-mix(in srgb, var(--good) 82%, white);
+}
+
+.plan-badge-caution {
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+  color: color-mix(in srgb, var(--warn) 80%, white);
 }
 
 .token-pool-table .accounts-actions-col {
