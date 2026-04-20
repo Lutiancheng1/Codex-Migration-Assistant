@@ -657,7 +657,7 @@ td {
 }
 
 .token-pool-table {
-  min-width: 760px;
+  min-width: 680px;
 }
 
 .token-pool-table tbody tr {
@@ -688,6 +688,10 @@ td {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.token-pool-table td:nth-child(3) {
+  white-space: nowrap;
 }
 
 .plan-badge {

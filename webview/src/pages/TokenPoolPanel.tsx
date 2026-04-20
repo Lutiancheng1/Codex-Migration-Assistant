@@ -205,9 +205,7 @@ export function TokenPoolPanel(props: Props): JSX.Element {
             <tr>
               <th className="accounts-order-col" aria-label="排序"></th>
               <th>账号</th>
-              <th>套餐</th>
-              <th>5小时</th>
-              <th>7天</th>
+              <th>5h/7d</th>
               <th>状态</th>
               <th>最近刷新</th>
               <th className="accounts-actions-col">操作</th>
@@ -216,7 +214,7 @@ export function TokenPoolPanel(props: Props): JSX.Element {
           <tbody>
             {entries.length === 0 ? (
               <tr>
-                <td className="token-pool-empty-row" colSpan={8}>暂未导入 token JSON。</td>
+                <td className="token-pool-empty-row" colSpan={6}>暂未导入 token JSON。</td>
               </tr>
             ) : null}
 
@@ -288,9 +286,7 @@ export function TokenPoolPanel(props: Props): JSX.Element {
                       {planBadge ? <span className={`plan-badge plan-badge-${planBadge.tone}`}>{planBadge.label}</span> : null}
                     </div>
                   </td>
-                  <td>{entry.usage?.planType || entry.planTypeHint || "-"}</td>
-                  <td>{formatPercent(entry.usage?.fiveHour?.remainingPercent)}</td>
-                  <td>{formatPercent(entry.usage?.oneWeek?.remainingPercent)}</td>
+                  <td>{`${formatPercent(entry.usage?.fiveHour?.remainingPercent)}/${formatPercent(entry.usage?.oneWeek?.remainingPercent)}`}</td>
                   <td>{statusLabel(entry)}</td>
                   <td>{entry.usage ? formatTime(entry.usage.fetchedAt) : "-"}</td>
                   <td className="accounts-actions-col">
