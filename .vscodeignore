@@ -5,8 +5,6 @@ src/**
 webview/**
 test/**
 docs/**
-apps/**
-packages/**
 
 # Local-only docs and generated archives
 AGENTS.md
@@ -33,7 +31,6 @@ node_modules/**/*.markdown
 node_modules/**/*.map
 node_modules/**/*.ts
 node_modules/**/*.tsx
-node_modules/@codex-migration/**
 
 # Keep extension docs
 !README.md

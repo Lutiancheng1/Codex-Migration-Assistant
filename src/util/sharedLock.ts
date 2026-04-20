@@ -3,7 +3,7 @@ import * as os from "os";
 import * as path from "path";
 import { deriveSharedLockPath } from "./sharedData";
 
-type SharedWriteOwner = "desktop-macos" | "vscode-extension";
+type SharedWriteOwner = "vscode-extension";
 
 type LockRecord = {
   schemaVersion: 1;

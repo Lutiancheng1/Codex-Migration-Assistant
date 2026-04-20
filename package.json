@@ -10,10 +10,6 @@
     "url": "https://github.com/Lutiancheng1/Codex-Migration-Assistant.git"
   },
   "private": true,
-  "workspaces": [
-    "packages/*",
-    "apps/*"
-  ],
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -83,10 +79,7 @@
     "clean": "rm -rf dist dist-webview",
     "build:ext": "tsc -p tsconfig.json",
     "build:webview": "vite build --config webview/vite.config.ts",
-    "build:desktop": "npm run build:ext && npm --workspace @codex-migration/desktop-macos run build:sidecar && npm --workspace @codex-migration/desktop-macos run build",
-    "build": "npm run build:webview && npm run build:ext",
-    "tauri:dev": "npm run build:ext && npm --workspace @codex-migration/desktop-macos run tauri:dev",
-    "tauri:build": "npm run build:ext && npm --workspace @codex-migration/desktop-macos run tauri:build",
+    "build": "npm run clean && npm run build:webview && npm run build:ext",
     "package:vsix": "npm run build && npx @vscode/vsce package",
     "package:vsix:node20": "bash -lc 'eval \"$(fnm env)\" && fnm use 20 >/dev/null && npm run build && npx @vscode/vsce package'",
     "watch:ext": "tsc -w -p tsconfig.json",
