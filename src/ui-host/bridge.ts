@@ -35,7 +35,7 @@ function send(webview: vscode.Webview, message: ResponseMessage): void {
 }
 
 function emitTaskLog(webview: vscode.Webview, level: "info" | "warn" | "error", message: string): void {
-  send(webview, { type: "TASK_LOG", payload: { level, message } });
+  send(webview, { type: "TASK_LOG", payload: { level, timestamp: new Date().toISOString(), message } });
 }
 
 async function pickPath(webview: vscode.Webview, kind: "folder" | "file", title: string, filters?: Record<string, string[]>): Promise<void> {

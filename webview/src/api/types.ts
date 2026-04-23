@@ -329,7 +329,7 @@ export type ResponseMessage =
   }
   | { type: "PATH_PICKED"; payload: { path?: string } }
   | { type: "TASK_PROGRESS"; payload: { step: string; percent: number; message: string } }
-  | { type: "TASK_LOG"; payload: { level: "info" | "warn" | "error"; message: string } }
+  | { type: "TASK_LOG"; payload: { level: "info" | "warn" | "error"; timestamp: string; message: string } }
   | {
     type: "TASK_RESULT";
     payload: {

@@ -1,12 +1,12 @@
 # Codex Migration Extension Handoff
 
-最后更新：2026-04-20（已按用户要求移除 Tauri/macOS 独立 app 架构，仓库重新收回为纯扩展主线；账号池 `5h/7d` 列已补 hover 提示；账号池表已移除“最近刷新”列，并限制为最多显示 6 条后内部滚动，且当前账号会自动滚入可视区；账号池自动检测已改为按设置间隔串行刷新整个账号池，再基于最新结果决定是否自动切换；账号管理区块的“用量自动刷新频率”默认已改为禁用；当前扩展版本 `1.0.10`）
+最后更新：2026-04-23（已按用户要求移除 Tauri/macOS 独立 app 架构，仓库重新收回为纯扩展主线；账号池 `5h/7d` 列已补 hover 提示；账号池表已移除“最近刷新”列，并限制为最多显示 6 条后内部滚动，且当前账号会自动滚入可视区；账号池设置已改成“自动检测/用量自动刷新频率”，不再自动换号；执行与操作日志已统一补时间前缀；账号管理区块的“用量自动刷新频率”默认已改为禁用；当前扩展版本 `1.0.12`）
 
 ## 项目快照
 
 - 项目名：`codex-migration-extension`
 - 展示名：`Codex 迁移助手`
-- 当前版本：`1.0.10`
+- 当前版本：`1.0.12`
 - 当前形态：VS Code / Codex Webview 扩展
 - 技术栈：TypeScript、React、VS Code Webview、Node.js 20+
 - 当前定位：面向 Codex 用户的账号切换、数据迁移、备份恢复、会话清理与用量查看
@@ -234,6 +234,61 @@ badge 来源优先使用：
 相关文件：
 
 - `src/engine/tokenPool.ts`
+
+### 0.3.6 账号池设置文案和行为已改成“自动检测/用量自动刷新”，不再自动换号
+
+用户确认后，账号池这块不再把“自动切换”作为主路径。
+
+现在的行为改成：
+
+- UI 文案从“开启账号池自动切换”改成“开启账号池自动检测”
+- “检测间隔”改成“用量自动刷新频率”
+- “切换后自动重启 Codex”改成“手动切换后自动重启 Codex”
+- 定时器触发时只做整池串行刷新
+- 不再基于刷新结果自动写入 `pool-runner` 并自动换号
+- 最近一轮结果显示为“最近自动检测”，而不是“最近自动切换”
+
+为了兼容已有本地存储和消息协议，这一轮没有强行重命名底层字段：
+
+- `autoSwitchEnabled`
+- `lastAutoSwitchAt`
+- `lastAutoSwitchMessage`
+
+这些字段目前只是沿用旧名字承载“自动检测/自动刷新”的状态，不代表系统还会自动切号。
+
+相关文件：
+
+- `webview/src/pages/TokenPoolPanel.tsx`
+- `src/engine/tokenPool.ts`
+
+### 0.6 执行与操作日志已统一补时间前缀
+
+这一轮专门扫描了 Webview 里的“执行与操作日志”链路，结论是：
+
+- 绝大多数业务日志都通过 `emitTaskLog(...)` 汇总成 `TASK_LOG`
+- 前端日志列表统一在 `webview/src/App.tsx` 的 `state.logs` 渲染
+- 之前没有时间，是因为日志消息结构里只有 `level + message`
+
+当前改法是统一补在公共链路上，而不是去几十个业务点手工拼时间：
+
+- `src/ui-host/bridge.ts`
+  - `emitTaskLog(...)` 现在会附带 `timestamp`
+- `src/protocol/messages.ts`
+  - `TASK_LOG` 协议新增 `timestamp`
+- `webview/src/api/types.ts`
+  - 同步前端消息类型
+- `webview/src/App.tsx`
+  - 操作日志统一格式化成 `[时间] [级别] 消息`
+  - 前端本地补的 warning/error 也走同一个格式化 helper
+
+这样后续新增业务日志只要继续走 `emitTaskLog(...)`，就天然会带时间，不需要再单独补。
+
+相关文件：
+
+- `src/ui-host/bridge.ts`
+- `src/protocol/messages.ts`
+- `webview/src/api/types.ts`
+- `webview/src/App.tsx`
 
 ### 0.4 用量失败提示已做短消息归一化
 

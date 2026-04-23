@@ -21,6 +21,21 @@ import "./styles.css";
 
 type Tab = "export" | "import" | "accounts";
 
+function formatLogTimestamp(timestamp?: string): string {
+  if (!timestamp) {
+    return new Date().toLocaleTimeString();
+  }
+  const parsed = Date.parse(timestamp);
+  if (Number.isNaN(parsed)) {
+    return timestamp;
+  }
+  return new Date(parsed).toLocaleTimeString();
+}
+
+function formatLogLine(level: "info" | "warn" | "error", message: string, timestamp?: string): string {
+  return `[${formatLogTimestamp(timestamp)}] [${level}] ${message}`;
+}
+
 function normalizeOutputDirValue(input: string): string {
   const trimmed = input.trim();
   if (!trimmed) {
@@ -120,7 +135,7 @@ export default function App(): JSX.Element {
       }
 
       if (msg.type === "TASK_LOG") {
-        setState((s) => ({ ...s, logs: [...s.logs, `[${msg.payload.level}] ${msg.payload.message}`] }));
+        setState((s) => ({ ...s, logs: [...s.logs, formatLogLine(msg.payload.level, msg.payload.message, msg.payload.timestamp)] }));
         return;
       }
 
@@ -153,7 +168,7 @@ export default function App(): JSX.Element {
         if (msg.payload.code === "E_FILE_LOCKED" && isThreadCleanupRequest(lastRequest) && lastRequest.payload.applyMode === "restartLater") {
           setState((s) => ({
             ...s,
-            logs: [...s.logs, `[warn] ${msg.payload.message}`],
+            logs: [...s.logs, formatLogLine("warn", msg.payload.message)],
             lastError: `${msg.payload.code}: ${msg.payload.message}`
           }));
           return;
@@ -197,7 +212,7 @@ export default function App(): JSX.Element {
   }
 
   function pushLocalError(message: string): void {
-    setState((s) => ({ ...s, lastError: message, logs: [...s.logs, `[error] ${message}`] }));
+    setState((s) => ({ ...s, lastError: message, logs: [...s.logs, formatLogLine("error", message)] }));
   }
 
   return (

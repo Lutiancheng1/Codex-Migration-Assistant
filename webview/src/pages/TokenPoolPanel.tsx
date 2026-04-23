@@ -179,7 +179,7 @@ export function TokenPoolPanel(props: Props): JSX.Element {
 
       <div className="token-pool-settings">
         <label className="check-row">
-          <span className="check-text">开启账号池自动切换</span>
+          <span className="check-text">开启账号池自动检测</span>
           <input
             type="checkbox"
             checked={props.tokenPool.settings.autoSwitchEnabled}
@@ -187,7 +187,7 @@ export function TokenPoolPanel(props: Props): JSX.Element {
           />
         </label>
         <label className="token-pool-interval">
-          <span className="check-text">检测间隔</span>
+          <span className="check-text">用量自动刷新频率</span>
           <select
             value={props.tokenPool.settings.pollIntervalMs}
             onChange={(e) => props.onUpdateSettings({ pollIntervalMs: Number(e.target.value) })}
@@ -201,7 +201,7 @@ export function TokenPoolPanel(props: Props): JSX.Element {
           </select>
         </label>
         <label className="check-row">
-          <span className="check-text">切换后自动重启 Codex</span>
+          <span className="check-text">手动切换后自动重启 Codex</span>
           <input
             type="checkbox"
             checked={props.tokenPool.settings.autoRelaunchAfterSwitch}
@@ -216,7 +216,7 @@ export function TokenPoolPanel(props: Props): JSX.Element {
 
       {props.tokenPool.lastAutoSwitchMessage ? (
         <p className="token-pool-last-status">
-          最近自动切换：{props.tokenPool.lastAutoSwitchMessage}
+          最近自动检测：{props.tokenPool.lastAutoSwitchMessage}
           {props.tokenPool.lastAutoSwitchAt ? ` · ${formatTime(props.tokenPool.lastAutoSwitchAt)}` : ""}
         </p>
       ) : null}

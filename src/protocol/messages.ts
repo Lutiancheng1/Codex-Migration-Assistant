@@ -411,6 +411,7 @@ export type TaskLogEvent = {
   type: "TASK_LOG";
   payload: {
     level: "info" | "warn" | "error";
+    timestamp: string;
     message: string;
   };
 };

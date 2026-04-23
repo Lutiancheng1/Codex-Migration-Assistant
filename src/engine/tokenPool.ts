@@ -191,10 +191,6 @@ function inferStatus(entry: Pick<TokenPoolEntryMeta, "usage" | "usageError" | "p
   return entry.usage.fiveHour.remainingPercent <= 0 || entry.usage.oneWeek.remainingPercent <= 0 ? "exhausted" : "available";
 }
 
-function isAvailableForSwitch(entry: Pick<TokenPoolEntryMeta, "status">): boolean {
-  return normalizeStatus(entry.status) === "available";
-}
-
 function safeTrim(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
@@ -682,7 +678,7 @@ class TokenPoolService implements DisposableLike {
     await this.writeMeta(meta, codexHomeOverride);
     this.emitLog(
       "info",
-      `账号池自动切换已${meta.settings.autoSwitchEnabled ? "开启" : "关闭"}，检测间隔 ${meta.settings.pollIntervalMs === 0 ? "禁用" : `${meta.settings.pollIntervalMs / 60000} 分钟`}，切换后${meta.settings.autoRelaunchAfterSwitch ? "自动重启 Codex" : "手动重启生效"}。`
+      `账号池自动检测已${meta.settings.autoSwitchEnabled ? "开启" : "关闭"}，用量自动刷新频率 ${meta.settings.pollIntervalMs === 0 ? "禁用" : `${meta.settings.pollIntervalMs / 60000} 分钟`}，手动切换后${meta.settings.autoRelaunchAfterSwitch ? "自动重启 Codex" : "手动重启生效"}。`
     );
     return this.getSnapshot(codexHomeOverride);
   }
@@ -855,17 +851,6 @@ class TokenPoolService implements DisposableLike {
     return this.getSnapshot(codexHomeOverride);
   }
 
-  private rotateCandidates(entries: TokenPoolEntryMeta[], activeEntryId?: string): TokenPoolEntryMeta[] {
-    if (!activeEntryId) {
-      return [...entries];
-    }
-    const index = entries.findIndex((entry) => entry.id === activeEntryId);
-    if (index < 0) {
-      return [...entries];
-    }
-    return [...entries.slice(index + 1), ...entries.slice(0, index)];
-  }
-
   private async runAutoSwitchTick(): Promise<void> {
     if (this.tickRunning) {
       return;
@@ -879,46 +864,14 @@ class TokenPoolService implements DisposableLike {
       }
 
       await this.refreshEntriesSequentially(meta, codexHome);
-
-      const poolRunner = await resolvePoolRunnerProfile(codexHome);
-      if (!poolRunner?.active) {
-        await this.writeMeta(meta, codexHome);
-        return;
-      }
-
-      const activeEntryId = await this.detectActiveEntryId(codexHome, meta);
-      if (!activeEntryId) {
-        await this.writeMeta(meta, codexHome);
-        return;
-      }
-
-      const currentIndex = meta.entries.findIndex((entry) => entry.id === activeEntryId);
-      if (currentIndex < 0) {
-        await this.writeMeta(meta, codexHome);
-        return;
-      }
-
-      if (isAvailableForSwitch(meta.entries[currentIndex])) {
-        await this.writeMeta(meta, codexHome);
-        return;
-      }
-
-      const candidates = this.rotateCandidates(meta.entries, activeEntryId).filter((entry) => entry.id !== activeEntryId);
-      for (const candidate of candidates) {
-        if (isAvailableForSwitch(candidate)) {
-          await this.writeMeta(meta, codexHome);
-          await this.activateEntry(candidate.id, codexHome, "auto");
-          return;
-        }
-      }
-
+      const successCount = meta.entries.filter((entry) => !entry.usageError && entry.usage).length;
+      const failedCount = meta.entries.filter((entry) => !!entry.usageError).length;
       meta.lastAutoSwitchAt = nowIso();
-      meta.lastAutoSwitchMessage = "账号池没有可用账号，已停止自动切换。";
+      meta.lastAutoSwitchMessage = `已顺序刷新 ${meta.entries.length} 个账号：成功 ${successCount}，失败 ${failedCount}。`;
       await this.writeMeta(meta, codexHome);
-      this.emitLog("warn", meta.lastAutoSwitchMessage);
-      this.options.notifications?.warn?.(meta.lastAutoSwitchMessage);
+      this.emitLog("info", meta.lastAutoSwitchMessage);
     } catch (error) {
-      this.emitLog("error", `账号池自动切换检测失败: ${(error as Error).message}`);
+      this.emitLog("error", `账号池自动检测失败: ${(error as Error).message}`);
     } finally {
       this.tickRunning = false;
     }
