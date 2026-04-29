@@ -620,6 +620,22 @@ td {
   align-items: center;
 }
 
+.token-pool-view-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.token-pool-available-toggle {
+  width: auto;
+}
+
+.token-pool-view-note {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .token-pool-settings {
   display: flex;
   gap: 10px;

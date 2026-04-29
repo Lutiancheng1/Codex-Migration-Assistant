@@ -3,6 +3,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ProfileSummary, TokenPoolEntry, TokenPoolRefreshCategory, TokenPoolSnapshot } from "../api/types";
 import { summarizeUsageErrors } from "./usageErrorSummary";
 
+type TokenPoolPlanFilter = TokenPoolRefreshCategory;
+type TokenPoolSortMode = "manual" | "plan" | "available" | "remaining" | "refreshed";
+
 type Props = {
   codexHome: string;
   tokenPool: TokenPoolSnapshot;
@@ -83,6 +86,41 @@ function getPlanCategory(entry: TokenPoolEntry): Exclude<TokenPoolRefreshCategor
   return undefined;
 }
 
+function getPlanSortRank(entry: TokenPoolEntry): number {
+  const category = getPlanCategory(entry);
+  switch (category) {
+    case "pro":
+      return 0;
+    case "team":
+      return 1;
+    case "plus":
+      return 2;
+    case "free":
+      return 3;
+    default:
+      return 4;
+  }
+}
+
+function getRemainingScore(entry: TokenPoolEntry): number {
+  const fiveHour = entry.usage?.fiveHour?.remainingPercent;
+  const oneWeek = entry.usage?.oneWeek?.remainingPercent;
+  const values = [fiveHour, oneWeek].filter((value): value is number => typeof value === "number");
+  if (values.length === 0) {
+    return -1;
+  }
+  return Math.min(...values);
+}
+
+function getFetchedAtMs(entry: TokenPoolEntry): number {
+  const value = entry.usage?.fetchedAt;
+  if (!value) {
+    return -1;
+  }
+  const ts = Date.parse(value);
+  return Number.isNaN(ts) ? -1 : ts;
+}
+
 function statusLabel(entry: TokenPoolEntry): string {
   switch (entry.status) {
     case "available":
@@ -109,20 +147,57 @@ export function TokenPoolPanel(props: Props): JSX.Element {
   const [draggingEntryId, setDraggingEntryId] = useState<string>();
   const [dragOverEntryId, setDragOverEntryId] = useState<string>();
   const [bulkRefreshCategory, setBulkRefreshCategory] = useState<TokenPoolRefreshCategory>("all");
+  const [planFilter, setPlanFilter] = useState<TokenPoolPlanFilter>("all");
+  const [availableOnly, setAvailableOnly] = useState(false);
+  const [sortMode, setSortMode] = useState<TokenPoolSortMode>("manual");
   const tableWrapRef = useRef<HTMLDivElement | null>(null);
   const currentRowRef = useRef<HTMLTableRowElement | null>(null);
   const entries = props.tokenPool.entries;
+  const indexedEntries = useMemo(() => entries.map((entry, index) => ({ entry, index })), [entries]);
   const isPoolRunnerActive = props.activeProfileId === props.poolRunnerProfile?.id;
   const canSyncCurrentToPoolRunner = !isPoolRunnerActive && !!props.activeProfileId;
+  const canReorderCurrentView = !availableOnly && planFilter === "all" && sortMode === "manual";
+  const visibleEntries = useMemo(() => {
+    const filtered = indexedEntries.filter(({ entry }) => {
+      if (availableOnly && entry.status !== "available") {
+        return false;
+      }
+      if (planFilter !== "all" && getPlanCategory(entry) !== planFilter) {
+        return false;
+      }
+      return true;
+    });
+    const sorted = [...filtered];
+    sorted.sort((left, right) => {
+      if (sortMode === "plan") {
+        const rankDelta = getPlanSortRank(left.entry) - getPlanSortRank(right.entry);
+        return rankDelta || left.index - right.index;
+      }
+      if (sortMode === "available") {
+        const statusDelta = Number(right.entry.status === "available") - Number(left.entry.status === "available");
+        return statusDelta || left.index - right.index;
+      }
+      if (sortMode === "remaining") {
+        const remainingDelta = getRemainingScore(right.entry) - getRemainingScore(left.entry);
+        return remainingDelta || left.index - right.index;
+      }
+      if (sortMode === "refreshed") {
+        const refreshDelta = getFetchedAtMs(right.entry) - getFetchedAtMs(left.entry);
+        return refreshDelta || left.index - right.index;
+      }
+      return left.index - right.index;
+    });
+    return sorted.map(({ entry }) => entry);
+  }, [availableOnly, indexedEntries, planFilter, sortMode]);
   const usageErrorSummary = useMemo(
     () =>
       summarizeUsageErrors(
-        entries.map((entry) => ({
+        visibleEntries.map((entry) => ({
           name: entry.email || entry.accountId,
           usageError: entry.usageError
         }))
       ),
-    [entries]
+    [visibleEntries]
   );
   const refreshCategoryCounts = useMemo(() => {
     const counts: Record<TokenPoolRefreshCategory, number> = {
@@ -148,6 +223,13 @@ export function TokenPoolPanel(props: Props): JSX.Element {
     { value: "pro", label: "Pro", count: refreshCategoryCounts.pro }
   ];
   const selectedRefreshCount = refreshCategoryCounts[bulkRefreshCategory] ?? 0;
+  const filterOptions: Array<{ value: TokenPoolPlanFilter; label: string; count: number }> = [
+    { value: "all", label: "全部套餐", count: refreshCategoryCounts.all },
+    { value: "pro", label: "Pro", count: refreshCategoryCounts.pro },
+    { value: "team", label: "Team", count: refreshCategoryCounts.team },
+    { value: "plus", label: "Plus", count: refreshCategoryCounts.plus },
+    { value: "free", label: "Free", count: refreshCategoryCounts.free }
+  ];
 
   useEffect(() => {
     if (!openActionEntryId) {
@@ -195,7 +277,7 @@ export function TokenPoolPanel(props: Props): JSX.Element {
         inline: "nearest"
       });
     });
-  }, [entries]);
+  }, [visibleEntries]);
 
   return (
     <section className="token-pool-panel">
@@ -237,6 +319,34 @@ export function TokenPoolPanel(props: Props): JSX.Element {
         <button onClick={() => props.onRefreshGroup(bulkRefreshCategory)} disabled={selectedRefreshCount === 0}>
           刷新选中分类
         </button>
+      </div>
+
+      <div className="token-pool-view-controls">
+        <label className="check-row token-pool-available-toggle">
+          <span className="check-text">只看可用账号</span>
+          <input type="checkbox" checked={availableOnly} onChange={(event) => setAvailableOnly(event.target.checked)} />
+        </label>
+        <label className="token-pool-interval">
+          <span className="check-text">套餐筛选</span>
+          <select value={planFilter} onChange={(event) => setPlanFilter(event.target.value as TokenPoolPlanFilter)}>
+            {filterOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}（{option.count}）
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="token-pool-interval">
+          <span className="check-text">视图排序</span>
+          <select value={sortMode} onChange={(event) => setSortMode(event.target.value as TokenPoolSortMode)}>
+            <option value="manual">手动顺序</option>
+            <option value="plan">套餐分组：Pro &gt; Team &gt; Plus &gt; Free</option>
+            <option value="available">可用优先</option>
+            <option value="remaining">剩余额度高优先</option>
+            <option value="refreshed">最近刷新优先</option>
+          </select>
+        </label>
+        {!canReorderCurrentView ? <span className="token-pool-view-note">当前为视图筛选/排序，不会改真实池顺序。</span> : null}
       </div>
 
       <div className="token-pool-settings">
@@ -286,6 +396,7 @@ export function TokenPoolPanel(props: Props): JSX.Element {
       <div className="token-pool-legend">
         <span>当前 Codex 目录：{props.codexHome || "-"}</span>
         <span>池内账号数：{entries.length}</span>
+        <span>当前显示：{visibleEntries.length}</span>
       </div>
 
       <div ref={tableWrapRef} className="accounts-table-wrap token-pool-table-wrap">
@@ -312,8 +423,13 @@ export function TokenPoolPanel(props: Props): JSX.Element {
                 <td className="token-pool-empty-row" colSpan={5}>暂未导入 token JSON。</td>
               </tr>
             ) : null}
+            {entries.length > 0 && visibleEntries.length === 0 ? (
+              <tr>
+                <td className="token-pool-empty-row" colSpan={5}>当前筛选条件下没有账号。</td>
+              </tr>
+            ) : null}
 
-            {entries.map((entry, index) => {
+            {visibleEntries.map((entry, index) => {
               const isActionOpen = openActionEntryId === entry.id;
               const confirmDelete = pendingDeleteEntryId === entry.id;
               const isSwitchBlocked = isManualSwitchBlocked(entry);
@@ -325,7 +441,7 @@ export function TokenPoolPanel(props: Props): JSX.Element {
                   key={entry.id}
                   className={`${entry.current ? "current" : ""} ${draggingEntryId === entry.id ? "dragging" : ""} ${isDragOver ? "drag-over" : ""}`.trim()}
                   onDragOver={(event) => {
-                    if (!draggingEntryId || draggingEntryId === entry.id) {
+                    if (!canReorderCurrentView || !draggingEntryId || draggingEntryId === entry.id) {
                       return;
                     }
                     event.preventDefault();
@@ -335,7 +451,7 @@ export function TokenPoolPanel(props: Props): JSX.Element {
                   }}
                   onDrop={(event) => {
                     event.preventDefault();
-                    if (!draggingEntryId || draggingEntryId === entry.id) {
+                    if (!canReorderCurrentView || !draggingEntryId || draggingEntryId === entry.id) {
                       setDraggingEntryId(undefined);
                       setDragOverEntryId(undefined);
                       return;
@@ -359,6 +475,10 @@ export function TokenPoolPanel(props: Props): JSX.Element {
                       className="drag-handle-button"
                       draggable
                       onDragStart={(event) => {
+                        if (!canReorderCurrentView) {
+                          event.preventDefault();
+                          return;
+                        }
                         event.dataTransfer.effectAllowed = "move";
                         event.dataTransfer.setData("text/plain", entry.id);
                         setDraggingEntryId(entry.id);
@@ -369,7 +489,8 @@ export function TokenPoolPanel(props: Props): JSX.Element {
                         setDragOverEntryId(undefined);
                       }}
                       aria-label={`拖拽排序 ${entry.email || entry.accountId}`}
-                      title="拖拽排序"
+                      title={canReorderCurrentView ? "拖拽排序" : "筛选/排序视图下不改真实池顺序"}
+                      disabled={!canReorderCurrentView}
                     >
                       ⋮⋮
                     </button>
@@ -449,7 +570,8 @@ export function TokenPoolPanel(props: Props): JSX.Element {
                                   props.onMoveEntry(entry.id, "up");
                                   setOpenActionEntryId(undefined);
                                 }}
-                                disabled={index === 0}
+                                disabled={!canReorderCurrentView || index === 0}
+                                title={!canReorderCurrentView ? "筛选/排序视图下不改真实池顺序" : undefined}
                               >
                                 上移
                               </button>
@@ -458,7 +580,8 @@ export function TokenPoolPanel(props: Props): JSX.Element {
                                   props.onMoveEntry(entry.id, "down");
                                   setOpenActionEntryId(undefined);
                                 }}
-                                disabled={index === entries.length - 1}
+                                disabled={!canReorderCurrentView || index === visibleEntries.length - 1}
+                                title={!canReorderCurrentView ? "筛选/排序视图下不改真实池顺序" : undefined}
                               >
                                 下移
                               </button>
@@ -498,7 +621,7 @@ export function TokenPoolPanel(props: Props): JSX.Element {
         </div>
       ) : null}
 
-      <p className="token-pool-help">说明：账号池不支持全量查额度。自动检测只检查当前激活账号，其它账号只支持单条手动刷新。</p>
+      <p className="token-pool-help">说明：筛选和排序只影响当前表格展示，不会改变账号池真实顺序。自动检测会按真实池顺序串行刷新整池账号。</p>
     </section>
   );
 }
