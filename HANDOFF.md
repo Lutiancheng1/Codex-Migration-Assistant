@@ -1,12 +1,12 @@
 # Codex Migration Extension Handoff
 
-最后更新：2026-04-23（已按用户要求移除 Tauri/macOS 独立 app 架构，仓库重新收回为纯扩展主线；账号池 `5h/7d` 列已补 hover 提示；账号池表已移除“最近刷新”列，并限制为最多显示 6 条后内部滚动，且当前账号会自动滚入可视区；账号池设置已改成“自动检测/用量自动刷新频率”，不再自动换号；执行与操作日志已统一补时间前缀；账号管理区块的“用量自动刷新频率”默认已改为禁用；当前扩展版本 `1.0.12`）
+最后更新：2026-04-29（已按用户要求移除 Tauri/macOS 独立 app 架构，仓库重新收回为纯扩展主线；账号池 `5h/7d` 列已补 hover 提示；账号池表已移除“最近刷新”列，并限制为最多显示 6 条后内部滚动，且当前账号会自动滚入可视区；账号池设置已改成“自动检测/用量自动刷新频率”，不再自动换号；账号池已新增按分类批量刷新；Codex token 刷新已接入 CLIProxyAPI 同款 refresh_token 续期逻辑；执行与操作日志已统一补时间前缀；账号管理区块的“用量自动刷新频率”默认已改为禁用；当前扩展版本 `1.0.14`）
 
 ## 项目快照
 
 - 项目名：`codex-migration-extension`
 - 展示名：`Codex 迁移助手`
-- 当前版本：`1.0.12`
+- 当前版本：`1.0.14`
 - 当前形态：VS Code / Codex Webview 扩展
 - 技术栈：TypeScript、React、VS Code Webview、Node.js 20+
 - 当前定位：面向 Codex 用户的账号切换、数据迁移、备份恢复、会话清理与用量查看
@@ -41,7 +41,7 @@
 - 生成导入报告
 - 按会话 ID 批量预览和清理对话
 - `pool-runner` 专用账号池运行槽位
-- token pool 单条额度刷新、自动切换与可选自动重启 Codex
+- token pool 单条额度刷新、按分类批量刷新、整池自动检测与可选切换后自动重启 Codex
 
 ## 已明确的核心设计决策
 
@@ -260,6 +260,79 @@ badge 来源优先使用：
 
 - `webview/src/pages/TokenPoolPanel.tsx`
 - `src/engine/tokenPool.ts`
+
+### 0.3.7 账号池已新增按分类批量刷新
+
+账号池列表现在支持手动选择分类后批量刷新用量。
+
+当前行为：
+
+- 前端会读取当前账号池条目并统计分类数量
+- 分类来源优先使用 `usage.planType`
+- 如果账号还没刷新过，则回退到 `planTypeHint`
+- UI 提供：
+  - 全部账号
+  - Free
+  - Plus
+  - Team
+  - Pro
+- 用户选择分类后点击“刷新选中分类”
+- 后端按当前真实账号池数据重新筛选分类，再串行刷新匹配条目
+- 前一个账号刷新结束后，才会刷新下一个账号
+- 单个账号失败不会中断后续条目刷新
+
+这块新增了独立消息：
+
+- `REFRESH_TOKEN_POOL_GROUP_USAGE`
+
+相关文件：
+
+- `src/engine/tokenPool.ts`
+- `src/protocol/messages.ts`
+- `src/protocol/schema.ts`
+- `src/ui-host/bridge.ts`
+- `webview/src/api/types.ts`
+- `webview/src/App.tsx`
+- `webview/src/pages/AccountsManager.tsx`
+- `webview/src/pages/TokenPoolPanel.tsx`
+- `webview/src/styles.css`
+
+### 0.3.8 Codex token 刷新已接入 CLIProxyAPI 同款 refresh_token 续期逻辑
+
+这次对照了本地 `CLIProxyAPI` 的 Codex OAuth 实现，核心逻辑在：
+
+- `internal/auth/codex/openai_auth.go`
+- `sdk/auth/codex.go`
+
+CLIProxyAPI 的 token 并不是“天然永不过期”，而是：
+
+- 使用 `https://auth.openai.com/oauth/token`
+- `grant_type=refresh_token`
+- `client_id=app_EMoamEEZ73f0CkXaXp7hrann`
+- Codex provider 设置了 `5 * 24h` 的 refresh lead
+- 续期成功后持久化新的 `access_token / id_token / refresh_token / expired / last_refresh`
+
+当前扩展已迁移这套核心策略：
+
+- 账号槽位刷新用量前，会在 token 即将过期时自动续期并写回 `auth.json`
+- 如果用量接口返回 `token_expired`，会强制续期后重试一次
+- 账号池单条刷新、按分类批量刷新、自动检测整池刷新都会走同一套续期逻辑
+- 账号池条目续期成功后会写回 token pool secret 和 metadata
+- 手动切换账号池条目时，写入 `pool-runner/auth.json` 的是最新 token
+- 账号槽位刷新用量现在进入共享写锁，因为刷新过程可能写回新 token
+
+边界：
+
+- 如果 `refresh_token` 已失效、被复用或被服务端拒绝，会明确提示重新登录
+- 不读取、不打印、不记录任何实际 token 内容
+- 续期失败时，如果旧 `access_token` 仍可用，会尝试继续查询；如果旧 token 也过期，则按失败提示展示
+
+相关文件：
+
+- `src/engine/usage.ts`
+- `src/engine/tokenPool.ts`
+- `src/ui-host/bridge.ts`
+- `test/usage.test.mjs`
 
 ### 0.6 执行与操作日志已统一补时间前缀
 

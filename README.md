@@ -28,10 +28,10 @@
 - 导入前预演，先看统计再执行
 - 多账号槽位管理：新增、切换、切换并合并、切换并覆盖、删除
 - 账号池：导入单个 / 多个 JSON 或目录中的 JSON，通过 `pool-runner` 专用槽位切换当前登录态，不动现有对话记录
-- 账号池：按套餐显示额度，可按池内顺序自动切到下一个可用账号
+- 账号池：显示 `FREE / TEAM / PLUS / PRO` 标签，支持单条刷新、按分类批量刷新和定时顺序刷新
 - 切换前目录占用检测，必要时结束进程后继续
 - 切换完成后尝试恢复启动被结束的客户端进程
-- 每个账号单独刷新用量，显示 `套餐 / 5小时剩余 / 7天剩余 / 最近刷新时间`
+- 每个账号单独刷新用量，显示套餐、5 小时 / 7 天窗口剩余额度与重置时间提示
 - 支持 `history.jsonl` 与 `session_index.jsonl` 的迁移与合并
 - 支持可选迁移 `state_*.sqlite*`
 - 支持可选迁移 `auth.json / cap_sid`
@@ -157,7 +157,13 @@ codex-backup-{userLabel}-{timestamp}.zip
 - 7 天窗口剩余
 - 最近刷新时间
 
-如果账号未登录或 auth 不完整，会在日志中显示跳过或失败原因。
+刷新用量前会优先按 Codex 官方 OAuth refresh_token 流程续期登录态：
+- 使用 `https://auth.openai.com/oauth/token`
+- 使用 `refresh_token` grant
+- 提前 5 天进入续期窗口，和 CLIProxyAPI 的 Codex 刷新策略保持一致
+- 续期成功后会写回新的 `access_token / id_token / refresh_token / expired / last_refresh`
+
+如果 refresh_token 已失效、账号未登录或 auth 不完整，会在日志中显示跳过或失败原因。
 
 ## 账号池
 
@@ -175,19 +181,21 @@ codex-backup-{userLabel}-{timestamp}.zip
 1. 在普通账号槽位里整理好你要继续使用的记录
 2. 点击“同步当前记录到池槽位”
 3. 切换到 `pool-runner`
-4. 再用账号池切 token 或开启自动切换
+4. 再用账号池切 token，或开启账号池自动检测让它按间隔顺序刷新整池用量
 
 支持导入：
 - 单个 JSON
 - 多个 JSON
 - 指定目录首层 `.json`
 
-切换时只会改这 5 个字段：
+切换时只会改认证字段：
 - `last_refresh`
+- `expired`
 - `tokens.access_token`
 - `tokens.account_id`
 - `tokens.id_token`
 - `tokens.refresh_token`
+- `tokens.expired`
 
 不会改：
 - `cap_sid`
@@ -204,13 +212,13 @@ codex-backup-{userLabel}-{timestamp}.zip
 - `plus`
   - 同时看 `5小时剩余` 和 `7天剩余`
 
-自动切换逻辑：
+账号池刷新与检测逻辑：
 - 只在**当前活动槽位是 `pool-runner`** 时生效
-- 只检测**当前正在使用的池账号**
-- 默认每 `5 分钟` 检测一次
-- 当前账号额度耗尽或鉴权失效时，按池内顺序切到下一个可用账号
-- 不提供“全池一键查额度”
-- 其他池账号只支持**单条手动刷新**
+- 手动支持单条刷新
+- 手动支持按分类批量刷新：全部账号、Free、Plus、Team、Pro
+- 开启“账号池自动检测”并设置频率后，会按池内顺序串行刷新整个账号池
+- 每个账号刷新前都会尝试用 refresh_token 自动续期登录态
+- 当前版本不再做真正的无人值守自动换号；写入新登录态后仍以手动切换和手动重启 / Reload Window 生效为主
 
 ## 对话清理（按会话ID）
 

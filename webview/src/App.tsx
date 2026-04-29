@@ -269,6 +269,9 @@ export default function App(): JSX.Element {
                 onRefreshTokenPoolEntry={(entryId) =>
                   dispatch({ type: "REFRESH_TOKEN_POOL_ENTRY_USAGE", payload: { codexHome: state.codexHome, entryId } })
                 }
+                onRefreshTokenPoolGroup={(category) =>
+                  dispatch({ type: "REFRESH_TOKEN_POOL_GROUP_USAGE", payload: { codexHome: state.codexHome, category } })
+                }
                 onActivateTokenPoolEntry={(entryId) =>
                   dispatch({ type: "ACTIVATE_TOKEN_POOL_ENTRY", payload: { codexHome: state.codexHome, entryId } })
                 }

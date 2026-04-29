@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ProfileSummary, TokenPoolEntry, TokenPoolSnapshot } from "../api/types";
+import type { ProfileSummary, TokenPoolEntry, TokenPoolRefreshCategory, TokenPoolSnapshot } from "../api/types";
 import { summarizeUsageErrors } from "./usageErrorSummary";
 
 type Props = {
@@ -15,6 +15,7 @@ type Props = {
   onSyncCurrentToPoolRunner(): void;
   onSwitchToPoolRunner(): void;
   onRefreshEntry(entryId: string): void;
+  onRefreshGroup(category: TokenPoolRefreshCategory): void;
   onActivateEntry(entryId: string): void;
   onDeleteEntry(entryId: string): void;
   onMoveEntry(entryId: string, direction: "up" | "down"): void;
@@ -62,6 +63,26 @@ function getPlanBadge(plan?: string): { label: string; tone: "neutral" | "good" 
   return { label: plan!.trim().toUpperCase(), tone: "caution" };
 }
 
+function getPlanCategory(entry: TokenPoolEntry): Exclude<TokenPoolRefreshCategory, "all"> | undefined {
+  const normalized = (entry.usage?.planType || entry.planTypeHint || "").trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized.includes("team")) {
+    return "team";
+  }
+  if (normalized.includes("plus")) {
+    return "plus";
+  }
+  if (normalized.includes("pro")) {
+    return "pro";
+  }
+  if (normalized.includes("free")) {
+    return "free";
+  }
+  return undefined;
+}
+
 function statusLabel(entry: TokenPoolEntry): string {
   switch (entry.status) {
     case "available":
@@ -87,6 +108,7 @@ export function TokenPoolPanel(props: Props): JSX.Element {
   const [pendingDeleteEntryId, setPendingDeleteEntryId] = useState<string>();
   const [draggingEntryId, setDraggingEntryId] = useState<string>();
   const [dragOverEntryId, setDragOverEntryId] = useState<string>();
+  const [bulkRefreshCategory, setBulkRefreshCategory] = useState<TokenPoolRefreshCategory>("all");
   const tableWrapRef = useRef<HTMLDivElement | null>(null);
   const currentRowRef = useRef<HTMLTableRowElement | null>(null);
   const entries = props.tokenPool.entries;
@@ -102,6 +124,30 @@ export function TokenPoolPanel(props: Props): JSX.Element {
       ),
     [entries]
   );
+  const refreshCategoryCounts = useMemo(() => {
+    const counts: Record<TokenPoolRefreshCategory, number> = {
+      all: entries.length,
+      free: 0,
+      plus: 0,
+      team: 0,
+      pro: 0
+    };
+    for (const entry of entries) {
+      const category = getPlanCategory(entry);
+      if (category) {
+        counts[category] += 1;
+      }
+    }
+    return counts;
+  }, [entries]);
+  const refreshCategoryOptions: Array<{ value: TokenPoolRefreshCategory; label: string; count: number }> = [
+    { value: "all", label: "全部账号", count: refreshCategoryCounts.all },
+    { value: "free", label: "Free", count: refreshCategoryCounts.free },
+    { value: "plus", label: "Plus", count: refreshCategoryCounts.plus },
+    { value: "team", label: "Team", count: refreshCategoryCounts.team },
+    { value: "pro", label: "Pro", count: refreshCategoryCounts.pro }
+  ];
+  const selectedRefreshCount = refreshCategoryCounts[bulkRefreshCategory] ?? 0;
 
   useEffect(() => {
     if (!openActionEntryId) {
@@ -174,6 +220,22 @@ export function TokenPoolPanel(props: Props): JSX.Element {
         </button>
         <button onClick={props.onSwitchToPoolRunner} disabled={isPoolRunnerActive}>
           {props.poolRunnerProfile ? "切换到 pool-runner" : "创建并切换到 pool-runner"}
+        </button>
+      </div>
+
+      <div className="token-pool-bulk-refresh">
+        <label className="token-pool-interval">
+          <span className="check-text">批量刷新</span>
+          <select value={bulkRefreshCategory} onChange={(event) => setBulkRefreshCategory(event.target.value as TokenPoolRefreshCategory)}>
+            {refreshCategoryOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}（{option.count}）
+              </option>
+            ))}
+          </select>
+        </label>
+        <button onClick={() => props.onRefreshGroup(bulkRefreshCategory)} disabled={selectedRefreshCount === 0}>
+          刷新选中分类
         </button>
       </div>
 

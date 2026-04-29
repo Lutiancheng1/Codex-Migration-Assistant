@@ -113,6 +113,13 @@ export const requestSchema = z.discriminatedUnion("type", [
     })
   }),
   z.object({
+    type: z.literal("REFRESH_TOKEN_POOL_GROUP_USAGE"),
+    payload: z.object({
+      codexHome: z.string().optional(),
+      category: z.enum(["all", "free", "plus", "team", "pro"])
+    })
+  }),
+  z.object({
     type: z.literal("ACTIVATE_TOKEN_POOL_ENTRY"),
     payload: z.object({
       codexHome: z.string().optional(),

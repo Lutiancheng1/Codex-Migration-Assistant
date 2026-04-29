@@ -706,6 +706,11 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
         return;
       }
 
+      if (msg.type === "REFRESH_TOKEN_POOL_GROUP_USAGE") {
+        await withWriteAccess(msg.payload.codexHome, (codexHome) => tokenPoolService.refreshGroupUsage(msg.payload.category, codexHome));
+        return;
+      }
+
       if (msg.type === "ACTIVATE_TOKEN_POOL_ENTRY") {
         await withWriteAccess(msg.payload.codexHome, (codexHome) => tokenPoolService.activateEntry(msg.payload.entryId, codexHome, "manual"));
         return;
@@ -734,8 +739,10 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
       if (msg.type === "REFRESH_PROFILE_USAGE") {
         const codexHome = resolveCodexHome(msg.payload?.codexHome);
         rememberCodexHome(codexHome);
-        const snapshot = await refreshProfilesUsage(codexHome, msg.payload?.profileId);
-        await emitSnapshot(target.webview, snapshot);
+        await withWriteAccess(codexHome, async (lockedCodexHome) => {
+          const snapshot = await refreshProfilesUsage(lockedCodexHome, msg.payload?.profileId);
+          await emitSnapshot(target.webview, snapshot);
+        });
         return;
       }
 

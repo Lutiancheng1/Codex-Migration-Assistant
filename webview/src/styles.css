@@ -613,6 +613,13 @@ td {
   flex-wrap: wrap;
 }
 
+.token-pool-bulk-refresh {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
 .token-pool-settings {
   display: flex;
   gap: 10px;

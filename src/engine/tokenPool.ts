@@ -15,7 +15,11 @@ import {
   extractEmailFromClaims,
   extractPlanTypeFromClaims,
   fetchUsageForIdentity,
+  isExpiredAuthErrorMessage,
+  refreshCodexTokens,
+  shouldRefreshCodexTokens,
   type AuthIdentity,
+  type CodexTokenRefreshResult,
   type ProfileUsageSummary
 } from "./usage";
 import { resolveCodexHome } from "../util/path";
@@ -25,6 +29,7 @@ import { detectExternalBusyProcesses, forceKillProcesses, relaunchKilledProcesse
 import { deriveTokenPoolPaths } from "../util/sharedData";
 
 export type TokenPoolStatus = "neverChecked" | "available" | "exhausted" | "authInvalid" | "incomplete";
+export type TokenPoolRefreshCategory = "all" | "free" | "plus" | "team" | "pro";
 
 export type TokenPoolSettings = {
   autoSwitchEnabled: boolean;
@@ -162,6 +167,59 @@ function normalizeInterval(value: number): number {
 
 function normalizeStatus(status: TokenPoolStatus | undefined): TokenPoolStatus {
   return status ?? "neverChecked";
+}
+
+function resolvePlanCategory(plan?: string): Exclude<TokenPoolRefreshCategory, "all"> | undefined {
+  const normalized = plan?.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized.includes("team")) {
+    return "team";
+  }
+  if (normalized.includes("plus")) {
+    return "plus";
+  }
+  if (normalized.includes("pro")) {
+    return "pro";
+  }
+  if (normalized.includes("free")) {
+    return "free";
+  }
+  return undefined;
+}
+
+function matchesRefreshCategory(entry: Pick<TokenPoolEntryMeta, "usage" | "planTypeHint">, category: TokenPoolRefreshCategory): boolean {
+  if (category === "all") {
+    return true;
+  }
+  return resolvePlanCategory(entry.usage?.planType || entry.planTypeHint) === category;
+}
+
+function applyRefreshedTokenSecret(secret: TokenPoolSecret, refreshed: CodexTokenRefreshResult): TokenPoolSecret {
+  return {
+    ...secret,
+    accessToken: refreshed.accessToken,
+    idToken: refreshed.idToken,
+    refreshToken: refreshed.refreshToken,
+    accountId: refreshed.accountId ?? secret.accountId,
+    email: refreshed.email ?? secret.email,
+    expired: refreshed.expired,
+    lastRefresh: refreshed.lastRefresh,
+    planTypeHint: refreshed.planTypeHint ?? secret.planTypeHint
+  };
+}
+
+function applyRefreshedTokenMeta(meta: TokenPoolEntryMeta, secret: TokenPoolSecret): TokenPoolEntryMeta {
+  return {
+    ...meta,
+    accountId: secret.accountId,
+    email: secret.email ?? meta.email,
+    expired: secret.expired,
+    lastRefresh: secret.lastRefresh,
+    planTypeHint: secret.planTypeHint ?? meta.planTypeHint,
+    updatedAt: nowIso()
+  };
 }
 
 function isAuthError(message: string): boolean {
@@ -617,7 +675,7 @@ class TokenPoolService implements DisposableLike {
   }
 
   private async refreshUsageForMeta(meta: TokenPoolEntryMeta, codexHomeOverride?: string): Promise<TokenPoolEntryMeta> {
-    const secret = await this.readSecret(meta.id, codexHomeOverride);
+    let secret = await this.readSecret(meta.id, codexHomeOverride);
     if (!secret) {
       return {
         ...meta,
@@ -628,14 +686,34 @@ class TokenPoolService implements DisposableLike {
       };
     }
 
+    let nextMeta = meta;
+    let refreshedBeforeUsage = false;
+    const refreshSecret = async (force: boolean): Promise<boolean> => {
+      if (!secret?.refreshToken || (!force && !shouldRefreshCodexTokens(secret.expired))) {
+        return false;
+      }
+      const refreshed = await refreshCodexTokens(secret.refreshToken);
+      secret = applyRefreshedTokenSecret(secret, refreshed);
+      await this.writeSecret(meta.id, secret, codexHomeOverride);
+      nextMeta = applyRefreshedTokenMeta(nextMeta, secret);
+      this.emitLog("info", `已自动续期账号池条目登录态: ${nextMeta.email || nextMeta.accountId}`);
+      return true;
+    };
+
+    try {
+      refreshedBeforeUsage = await refreshSecret(false);
+    } catch (error) {
+      this.emitLog("warn", `账号池条目登录态续期失败，将尝试使用现有 access_token 查询: ${(error as Error).message}`);
+    }
+
     const codexHome = resolveCodexHome(codexHomeOverride);
     const poolRunner = await resolvePoolRunnerProfile(codexHome);
     const baseUrl = await readChatgptBaseUrl(poolRunner?.path ?? (await resolveActiveProfilePath(codexHome)));
     try {
       const usage = await fetchUsageForIdentity({ accessToken: secret.accessToken, accountId: secret.accountId } satisfies AuthIdentity, baseUrl);
       const next: TokenPoolEntryMeta = {
-        ...meta,
-        planTypeHint: usage.planType || meta.planTypeHint || secret.planTypeHint,
+        ...nextMeta,
+        planTypeHint: usage.planType || nextMeta.planTypeHint || secret.planTypeHint,
         usage,
         usageError: undefined,
         status: "neverChecked",
@@ -645,8 +723,32 @@ class TokenPoolService implements DisposableLike {
       return next;
     } catch (error) {
       const message = (error as Error).message || "额度查询失败";
+      if (!refreshedBeforeUsage && isExpiredAuthErrorMessage(message)) {
+        try {
+          await refreshSecret(true);
+          const usage = await fetchUsageForIdentity({ accessToken: secret.accessToken, accountId: secret.accountId } satisfies AuthIdentity, baseUrl);
+          const next: TokenPoolEntryMeta = {
+            ...nextMeta,
+            planTypeHint: usage.planType || nextMeta.planTypeHint || secret.planTypeHint,
+            usage,
+            usageError: undefined,
+            status: "neverChecked",
+            updatedAt: nowIso()
+          };
+          next.status = inferStatus(next);
+          return next;
+        } catch (refreshError) {
+          const refreshMessage = (refreshError as Error).message || message;
+          return {
+            ...nextMeta,
+            usageError: refreshMessage,
+            status: "authInvalid",
+            updatedAt: nowIso()
+          };
+        }
+      }
       const next: TokenPoolEntryMeta = {
-        ...meta,
+        ...nextMeta,
         usageError: message,
         status: isAuthError(message) ? "authInvalid" : "incomplete",
         updatedAt: nowIso()
@@ -666,6 +768,34 @@ class TokenPoolService implements DisposableLike {
     const item = meta.entries[index];
     this.emitLog("info", `已刷新账号池条目 ${item.email || item.accountId} 的额度。`);
     return this.getSnapshot(codexHomeOverride);
+  }
+
+  async refreshGroupUsage(category: TokenPoolRefreshCategory, codexHomeOverride?: string): Promise<TokenPoolSnapshot> {
+    const codexHome = resolveCodexHome(codexHomeOverride);
+    const meta = await this.readMeta(codexHome);
+    const targetIndexes = meta.entries
+      .map((entry, index) => ({ entry, index }))
+      .filter(({ entry }) => matchesRefreshCategory(entry, category))
+      .map(({ index }) => index);
+
+    if (targetIndexes.length === 0) {
+      this.emitLog("warn", `账号池批量刷新未找到匹配分类: ${category}`);
+      return this.getSnapshot(codexHome);
+    }
+
+    for (let position = 0; position < targetIndexes.length; position += 1) {
+      const index = targetIndexes[position];
+      const entry = meta.entries[index];
+      this.emitLog("info", `账号池批量刷新 ${category} ${position + 1}/${targetIndexes.length}: ${entry.email || entry.accountId}`);
+      meta.entries[index] = await this.refreshUsageForMeta(entry, codexHome);
+    }
+
+    const refreshed = targetIndexes.map((index) => meta.entries[index]);
+    const successCount = refreshed.filter((entry) => !entry.usageError && entry.usage).length;
+    const failedCount = refreshed.filter((entry) => !!entry.usageError).length;
+    await this.writeMeta(meta, codexHome);
+    this.emitLog("info", `账号池批量刷新完成（${category}）：共 ${targetIndexes.length}，成功 ${successCount}，失败 ${failedCount}。`);
+    return this.getSnapshot(codexHome);
   }
 
   async setSettings(settings: Partial<TokenPoolSettings>, codexHomeOverride?: string): Promise<TokenPoolSnapshot> {
@@ -751,6 +881,10 @@ class TokenPoolService implements DisposableLike {
     tokens.account_id = secret.accountId;
     tokens.id_token = secret.idToken;
     tokens.refresh_token = secret.refreshToken;
+    if (secret.expired) {
+      tokens.expired = secret.expired;
+      parsed.expired = secret.expired;
+    }
     parsed.tokens = tokens;
     parsed.last_refresh = secret.lastRefresh ?? parsed.last_refresh ?? nowIso();
     await fs.writeFile(authPath, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
@@ -830,7 +964,8 @@ class TokenPoolService implements DisposableLike {
       }
     }
 
-    await this.writePatchedAuthJson(poolRunner.path, secret);
+    const latestSecret = (await this.readSecret(entryId, codexHome)) ?? secret;
+    await this.writePatchedAuthJson(poolRunner.path, latestSecret);
     invalidateProfileUsage(poolRunner.path);
     meta.activeEntryId = entryId;
     if (reason === "auto") {

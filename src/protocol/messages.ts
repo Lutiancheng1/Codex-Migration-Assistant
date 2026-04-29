@@ -41,6 +41,7 @@ export type ProfileSummary = {
 };
 
 export type TokenPoolStatus = "neverChecked" | "available" | "exhausted" | "authInvalid" | "incomplete";
+export type TokenPoolRefreshCategory = "all" | "free" | "plus" | "team" | "pro";
 
 export type TokenPoolSettings = {
   autoSwitchEnabled: boolean;
@@ -108,6 +109,10 @@ export type SwitchToPoolRunnerRequest = {
 export type RefreshTokenPoolEntryUsageRequest = {
   type: "REFRESH_TOKEN_POOL_ENTRY_USAGE";
   payload: { codexHome?: string; entryId: string };
+};
+export type RefreshTokenPoolGroupUsageRequest = {
+  type: "REFRESH_TOKEN_POOL_GROUP_USAGE";
+  payload: { codexHome?: string; category: TokenPoolRefreshCategory };
 };
 export type ActivateTokenPoolEntryRequest = {
   type: "ACTIVATE_TOKEN_POOL_ENTRY";
@@ -220,6 +225,7 @@ export type RequestMessage =
   | SyncCurrentToPoolRunnerRequest
   | SwitchToPoolRunnerRequest
   | RefreshTokenPoolEntryUsageRequest
+  | RefreshTokenPoolGroupUsageRequest
   | ActivateTokenPoolEntryRequest
   | DeleteTokenPoolEntryRequest
   | MoveTokenPoolEntryRequest

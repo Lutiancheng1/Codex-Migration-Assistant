@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type {
   ProfileSummary,
   ProfileUsageWindow,
+  TokenPoolRefreshCategory,
   TokenPoolSnapshot,
   ThreadCleanupApplyMode,
   ThreadCleanupPreviewResult,
@@ -39,6 +40,7 @@ type Props = {
   onSyncCurrentToPoolRunner(): void;
   onSwitchToPoolRunner(): void;
   onRefreshTokenPoolEntry(entryId: string): void;
+  onRefreshTokenPoolGroup(category: TokenPoolRefreshCategory): void;
   onActivateTokenPoolEntry(entryId: string): void;
   onDeleteTokenPoolEntry(entryId: string): void;
   onMoveTokenPoolEntry(entryId: string, direction: "up" | "down"): void;
@@ -252,6 +254,7 @@ export function AccountsManager(props: Props): JSX.Element {
             onSyncCurrentToPoolRunner={props.onSyncCurrentToPoolRunner}
             onSwitchToPoolRunner={props.onSwitchToPoolRunner}
             onRefreshEntry={props.onRefreshTokenPoolEntry}
+            onRefreshGroup={props.onRefreshTokenPoolGroup}
             onActivateEntry={props.onActivateTokenPoolEntry}
             onDeleteEntry={props.onDeleteTokenPoolEntry}
             onMoveEntry={props.onMoveTokenPoolEntry}

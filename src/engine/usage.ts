@@ -34,6 +34,10 @@ type UsageFetchFailure = {
   body?: string;
 };
 
+type AuthJsonRecord = Record<string, unknown> & {
+  tokens?: Record<string, unknown>;
+};
+
 export type ProfileUsageWindow = {
   usedPercent: number;
   remainingPercent: number;
@@ -57,6 +61,21 @@ export type AuthIdentity = {
   accessToken: string;
   accountId: string;
 };
+
+export type CodexTokenRefreshResult = {
+  accessToken: string;
+  idToken: string;
+  refreshToken: string;
+  accountId?: string;
+  email?: string;
+  expired: string;
+  lastRefresh: string;
+  planTypeHint?: string;
+};
+
+const CODEX_OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token";
+const CODEX_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
+const CODEX_REFRESH_LEAD_MS = 5 * 24 * 60 * 60 * 1000;
 
 export function decodeJwtPayload(token: string): Record<string, unknown> | undefined {
   const segment = token.split(".")[1];
@@ -102,7 +121,117 @@ export function extractPlanTypeFromClaims(payload: Record<string, unknown> | und
   return typeof planType === "string" && planType.trim().length > 0 ? planType.trim() : undefined;
 }
 
+export function shouldRefreshCodexTokens(expired: string | undefined, now = Date.now()): boolean {
+  if (!expired) {
+    return false;
+  }
+  const expiresAt = Date.parse(expired);
+  if (!Number.isFinite(expiresAt)) {
+    return false;
+  }
+  return expiresAt - now <= CODEX_REFRESH_LEAD_MS;
+}
+
+export function isExpiredAuthErrorMessage(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes("token_expired") || lower.includes("authentication token is expired") || lower.includes("登录态已过期");
+}
+
+export async function refreshCodexTokens(refreshToken: string): Promise<CodexTokenRefreshResult> {
+  if (!refreshToken.trim()) {
+    throw new Error("缺少 refresh_token，无法续期登录态");
+  }
+
+  const body = new URLSearchParams({
+    client_id: CODEX_OAUTH_CLIENT_ID,
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    scope: "openid profile email"
+  });
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 18_000);
+  try {
+    const response = await fetch(CODEX_OAUTH_TOKEN_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json"
+      },
+      body,
+      signal: controller.signal
+    });
+
+    const text = await response.text();
+    if (!response.ok) {
+      const lower = text.toLowerCase();
+      if (lower.includes("refresh_token_reused") || lower.includes("invalid_grant")) {
+        throw new Error("登录态续期失败：refresh_token 已失效，请重新登录后再刷新用量");
+      }
+      throw new Error(`登录态续期失败：${response.status} ${response.statusText} ${text.slice(0, 160)}`.trim());
+    }
+
+    const parsed = JSON.parse(text) as {
+      access_token?: string;
+      refresh_token?: string;
+      id_token?: string;
+      expires_in?: number;
+    };
+    if (!parsed.access_token || !parsed.refresh_token || !parsed.id_token) {
+      throw new Error("登录态续期失败：响应缺少必要 token 字段");
+    }
+
+    const idClaims = decodeJwtPayload(parsed.id_token);
+    return {
+      accessToken: parsed.access_token,
+      idToken: parsed.id_token,
+      refreshToken: parsed.refresh_token,
+      accountId: extractAccountIdFromClaims(idClaims),
+      email: extractEmailFromClaims(idClaims),
+      expired: new Date(Date.now() + Math.max(0, parsed.expires_in ?? 0) * 1000).toISOString(),
+      lastRefresh: new Date().toISOString(),
+      planTypeHint: extractPlanTypeFromClaims(idClaims)
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function readTokenString(tokens: Record<string, unknown> | undefined, raw: Record<string, unknown>, key: string): string | undefined {
+  const value = tokens?.[key] ?? raw[key];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function getAuthIdentityFromParsed(parsed: AuthJsonRecord): AuthIdentity & { refreshToken?: string; expired?: string } {
+  const tokens = parsed.tokens && typeof parsed.tokens === "object" ? parsed.tokens : undefined;
+  if (!tokens || typeof tokens !== "object") {
+    throw new Error("auth.json 缺少 tokens");
+  }
+
+  const accessToken = readTokenString(tokens, parsed, "access_token");
+  if (!accessToken) {
+    throw new Error("auth.json 缺少 access_token");
+  }
+
+  const idToken = readTokenString(tokens, parsed, "id_token");
+  const accountId = readTokenString(tokens, parsed, "account_id") ?? (idToken ? extractAccountIdFromClaims(decodeJwtPayload(idToken)) : undefined);
+  if (!accountId) {
+    throw new Error("auth.json 缺少 account_id");
+  }
+
+  return {
+    accessToken,
+    accountId,
+    refreshToken: readTokenString(tokens, parsed, "refresh_token"),
+    expired: readTokenString(tokens, parsed, "expired") ?? readTokenString(undefined, parsed, "expires_at")
+  };
+}
+
 async function readAuthIdentity(profilePath: string): Promise<AuthIdentity> {
+  return readAuthIdentityWithRefresh(profilePath, false);
+}
+
+async function readAuthIdentityWithRefresh(profilePath: string, forceRefresh: boolean): Promise<AuthIdentity> {
   const authPath = path.join(profilePath, "auth.json");
   const st = await statSafe(authPath);
   if (!st?.isFile()) {
@@ -110,29 +239,34 @@ async function readAuthIdentity(profilePath: string): Promise<AuthIdentity> {
   }
 
   const raw = await fs.readFile(authPath, "utf8");
-  const parsed = JSON.parse(raw) as Record<string, unknown>;
-  const tokens = parsed.tokens as Record<string, unknown> | undefined;
-  if (!tokens || typeof tokens !== "object") {
-    throw new Error("auth.json 缺少 tokens");
+  const parsed = JSON.parse(raw) as AuthJsonRecord;
+  const identity = getAuthIdentityFromParsed(parsed);
+  if (!identity.refreshToken || (!forceRefresh && !shouldRefreshCodexTokens(identity.expired))) {
+    return identity;
   }
 
-  const accessToken = tokens.access_token;
-  if (typeof accessToken !== "string" || accessToken.length === 0) {
-    throw new Error("auth.json 缺少 access_token");
-  }
-
-  let accountId = tokens.account_id;
-  if (typeof accountId !== "string" || accountId.length === 0) {
-    const idToken = tokens.id_token;
-    if (typeof idToken === "string" && idToken.length > 0) {
-      accountId = extractAccountIdFromClaims(decodeJwtPayload(idToken));
+  try {
+    const refreshed = await refreshCodexTokens(identity.refreshToken);
+    const tokens = parsed.tokens && typeof parsed.tokens === "object" ? { ...parsed.tokens } : {};
+    tokens.access_token = refreshed.accessToken;
+    tokens.id_token = refreshed.idToken;
+    tokens.refresh_token = refreshed.refreshToken;
+    tokens.account_id = refreshed.accountId ?? identity.accountId;
+    tokens.expired = refreshed.expired;
+    parsed.tokens = tokens;
+    parsed.expired = refreshed.expired;
+    parsed.last_refresh = refreshed.lastRefresh;
+    await fs.writeFile(authPath, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
+    return {
+      accessToken: refreshed.accessToken,
+      accountId: refreshed.accountId ?? identity.accountId
+    };
+  } catch (error) {
+    if (forceRefresh) {
+      throw error;
     }
+    return identity;
   }
-  if (typeof accountId !== "string" || accountId.length === 0) {
-    throw new Error("auth.json 缺少 account_id");
-  }
-
-  return { accessToken, accountId };
 }
 
 async function readChatgptBaseUrl(profilePath: string): Promise<string | undefined> {
@@ -347,5 +481,14 @@ export async function fetchUsageForIdentity(identity: AuthIdentity, baseUrl?: st
 export async function fetchProfileUsage(profilePath: string): Promise<ProfileUsageSummary> {
   const identity = await readAuthIdentity(profilePath);
   const baseUrl = await readChatgptBaseUrl(profilePath);
-  return fetchUsageForIdentity(identity, baseUrl);
+  try {
+    return await fetchUsageForIdentity(identity, baseUrl);
+  } catch (error) {
+    const message = (error as Error).message;
+    if (!isExpiredAuthErrorMessage(message)) {
+      throw error;
+    }
+    const refreshedIdentity = await readAuthIdentityWithRefresh(profilePath, true);
+    return fetchUsageForIdentity(refreshedIdentity, baseUrl);
+  }
 }

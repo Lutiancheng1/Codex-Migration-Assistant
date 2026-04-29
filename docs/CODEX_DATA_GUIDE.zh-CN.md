@@ -200,6 +200,8 @@ payload/
 - 导入前可先“预演”查看冲突与风险
 - 导入后输出 JSON + Markdown 报告
 - 账号页支持“刷新用量”（按账号槽位拉取套餐与 5 小时/7 天窗口剩余额度）
+- 用量刷新前会按 Codex OAuth refresh_token 流程尝试续期登录态，成功后写回新的 access/id/refresh token 和过期时间
+- 账号池支持单条刷新、按 Free / Plus / Team / Pro 分类批量刷新，以及开启自动检测后的整池串行刷新
 - 增强模式支持多编辑器状态迁移：VS Code / VS Code Insiders / Cursor / Antigravity / Kiro / Trae / Qoder
 
 注意：当前合并是“文件级合并”，不是“语义级聊天去重/重排”。

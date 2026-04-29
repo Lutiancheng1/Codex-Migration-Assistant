@@ -1,6 +1,6 @@
 # Codex 迁移助手接力文档
 
-最后更新：2026-03-13
+最后更新：2026-04-29
 
 ## 项目定位
 
@@ -26,13 +26,15 @@
 - `.codex` 导出 / 导入 ZIP 已具备
 - 多账号槽位、切换 / 合并 / 覆盖 / 删除已具备
 - `pool-runner` 专用账号池运行模型已进入主线
-- token pool 的导入、单条刷新、自动切换和可选自动重启已存在
+- token pool 的导入、单条刷新、按分类批量刷新、定时整池顺序刷新和可选切换后自动重启已存在
+- Codex 用量刷新已接入 CLIProxyAPI 同款 refresh_token 续期逻辑，刷新前会尝试续 access/id/refresh token 并写回本地
 - 当前重点改动已经推进到：
   - profile 与 token pool 拖拽排序
   - `live` 行与可持久化 profile 排序解耦
-  - token pool 列表窗口化渲染
+  - token pool 列表最多显示 6 条、内部滚动并自动滚到当前账号
   - `SWITCH_TO_POOL_RUNNER` 行为修复
   - token pool 状态快照去重
+  - token pool 按 Free / Plus / Team / Pro 分类批量刷新
 
 ## 当前未收口重点
 
@@ -40,7 +42,7 @@
 2. 大量池账号下的性能与稳定性继续压测
 3. 会话清理在损坏 SQLite 下的边界继续验证
 4. 打包链路与 Node 版本兼容继续收口
-5. UI 交互与状态提示继续统一
+5. refresh_token 失效、网络失败、并发刷新下的续期边界继续压测
 
 ## 接手顺序
 
