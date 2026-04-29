@@ -1,8 +1,8 @@
 {
   "name": "codex-migration-assistant",
   "displayName": "Codex 迁移助手",
-  "description": "用于 Codex 的跨设备记录迁移、当前设备多账号槽位切换、pool-runner 账号池无感换号与会话清理。",
-  "version": "1.0.15",
+  "description": "Codex 本地数据迁移、多账号槽位、账号池 token 管理、用量刷新与会话清理工具。",
+  "version": "1.0.16",
   "publisher": "local",
   "license": "MIT",
   "repository": {

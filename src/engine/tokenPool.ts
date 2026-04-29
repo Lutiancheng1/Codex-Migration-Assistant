@@ -161,7 +161,7 @@ function defaultMetadata(): TokenPoolMetadata {
 }
 
 function normalizeInterval(value: number): number {
-  const allowed = new Set([0, 60_000, 3 * 60_000, 5 * 60_000, 15 * 60_000, 30 * 60_000]);
+  const allowed = new Set([0, 5 * 60_000, 15 * 60_000, 30 * 60_000, 60 * 60_000]);
   return allowed.has(value) ? value : DEFAULT_INTERVAL;
 }
 

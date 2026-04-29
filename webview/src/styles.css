@@ -613,29 +613,6 @@ td {
   flex-wrap: wrap;
 }
 
-.token-pool-bulk-refresh {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.token-pool-view-controls {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.token-pool-available-toggle {
-  width: auto;
-}
-
-.token-pool-view-note {
-  color: var(--muted);
-  font-size: 12px;
-}
-
 .token-pool-settings {
   display: flex;
   gap: 10px;
@@ -715,6 +692,75 @@ td {
 .token-pool-table th {
   font-size: 12px;
   color: var(--muted);
+}
+
+.token-pool-th-control,
+.token-pool-th-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: max-content;
+}
+
+.token-pool-th-control select {
+  width: auto;
+  min-width: 68px;
+  max-width: 118px;
+  padding: 3px 6px;
+  border-radius: 7px;
+  font-size: 11px;
+  color: var(--fg);
+}
+
+.token-pool-account-head-controls {
+  gap: 5px;
+}
+
+.token-pool-usage-head-controls {
+  position: relative;
+}
+
+.token-pool-icon-button {
+  min-width: 24px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.token-pool-bulk-refresh-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 10;
+  display: grid;
+  gap: 8px;
+  width: 176px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--card) 98%, transparent);
+  box-shadow: 0 10px 24px color-mix(in srgb, #000 55%, transparent);
+}
+
+.token-pool-bulk-refresh-menu select,
+.token-pool-bulk-refresh-menu button {
+  width: 100%;
+}
+
+.token-pool-bulk-refresh-select {
+  display: block;
+}
+
+.token-pool-th-toggle {
+  cursor: pointer;
+}
+
+.token-pool-th-toggle input {
+  width: auto;
+  margin: 0;
 }
 
 .token-pool-table col.token-pool-order-col {

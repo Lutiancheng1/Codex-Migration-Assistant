@@ -147,6 +147,7 @@ export function TokenPoolPanel(props: Props): JSX.Element {
   const [draggingEntryId, setDraggingEntryId] = useState<string>();
   const [dragOverEntryId, setDragOverEntryId] = useState<string>();
   const [bulkRefreshCategory, setBulkRefreshCategory] = useState<TokenPoolRefreshCategory>("all");
+  const [bulkRefreshMenuOpen, setBulkRefreshMenuOpen] = useState(false);
   const [planFilter, setPlanFilter] = useState<TokenPoolPlanFilter>("all");
   const [availableOnly, setAvailableOnly] = useState(false);
   const [sortMode, setSortMode] = useState<TokenPoolSortMode>("manual");
@@ -222,7 +223,6 @@ export function TokenPoolPanel(props: Props): JSX.Element {
     { value: "team", label: "Team", count: refreshCategoryCounts.team },
     { value: "pro", label: "Pro", count: refreshCategoryCounts.pro }
   ];
-  const selectedRefreshCount = refreshCategoryCounts[bulkRefreshCategory] ?? 0;
   const filterOptions: Array<{ value: TokenPoolPlanFilter; label: string; count: number }> = [
     { value: "all", label: "全部套餐", count: refreshCategoryCounts.all },
     { value: "pro", label: "Pro", count: refreshCategoryCounts.pro },
@@ -232,12 +232,15 @@ export function TokenPoolPanel(props: Props): JSX.Element {
   ];
 
   useEffect(() => {
-    if (!openActionEntryId) {
+    if (!openActionEntryId && !bulkRefreshMenuOpen) {
       return;
     }
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      if (bulkRefreshMenuOpen && target.closest("[data-token-pool-bulk-refresh]")) {
         return;
       }
       const inside = target.closest(`[data-token-pool-menu-id="${openActionEntryId}"]`);
@@ -246,12 +249,14 @@ export function TokenPoolPanel(props: Props): JSX.Element {
       }
       setOpenActionEntryId(undefined);
       setPendingDeleteEntryId(undefined);
+      setBulkRefreshMenuOpen(false);
     };
 
     const handleScrollOrResize = () => {
       setOpenActionEntryId(undefined);
       setPendingDeleteEntryId(undefined);
       setActionAnchorRect(undefined);
+      setBulkRefreshMenuOpen(false);
     };
 
     document.addEventListener("mousedown", handlePointerDown);
@@ -263,7 +268,7 @@ export function TokenPoolPanel(props: Props): JSX.Element {
       window.removeEventListener("scroll", handleScrollOrResize, true);
       window.removeEventListener("resize", handleScrollOrResize);
     };
-  }, [openActionEntryId]);
+  }, [bulkRefreshMenuOpen, openActionEntryId]);
 
   useEffect(() => {
     const wrap = tableWrapRef.current;
@@ -305,50 +310,6 @@ export function TokenPoolPanel(props: Props): JSX.Element {
         </button>
       </div>
 
-      <div className="token-pool-bulk-refresh">
-        <label className="token-pool-interval">
-          <span className="check-text">批量刷新</span>
-          <select value={bulkRefreshCategory} onChange={(event) => setBulkRefreshCategory(event.target.value as TokenPoolRefreshCategory)}>
-            {refreshCategoryOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}（{option.count}）
-              </option>
-            ))}
-          </select>
-        </label>
-        <button onClick={() => props.onRefreshGroup(bulkRefreshCategory)} disabled={selectedRefreshCount === 0}>
-          刷新选中分类
-        </button>
-      </div>
-
-      <div className="token-pool-view-controls">
-        <label className="check-row token-pool-available-toggle">
-          <span className="check-text">只看可用账号</span>
-          <input type="checkbox" checked={availableOnly} onChange={(event) => setAvailableOnly(event.target.checked)} />
-        </label>
-        <label className="token-pool-interval">
-          <span className="check-text">套餐筛选</span>
-          <select value={planFilter} onChange={(event) => setPlanFilter(event.target.value as TokenPoolPlanFilter)}>
-            {filterOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}（{option.count}）
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="token-pool-interval">
-          <span className="check-text">视图排序</span>
-          <select value={sortMode} onChange={(event) => setSortMode(event.target.value as TokenPoolSortMode)}>
-            <option value="manual">手动顺序</option>
-            <option value="plan">套餐分组：Pro &gt; Team &gt; Plus &gt; Free</option>
-            <option value="available">可用优先</option>
-            <option value="remaining">剩余额度高优先</option>
-            <option value="refreshed">最近刷新优先</option>
-          </select>
-        </label>
-        {!canReorderCurrentView ? <span className="token-pool-view-note">当前为视图筛选/排序，不会改真实池顺序。</span> : null}
-      </div>
-
       <div className="token-pool-settings">
         <label className="check-row">
           <span className="check-text">开启账号池自动检测</span>
@@ -365,11 +326,10 @@ export function TokenPoolPanel(props: Props): JSX.Element {
             onChange={(e) => props.onUpdateSettings({ pollIntervalMs: Number(e.target.value) })}
           >
             <option value={0}>禁用</option>
-            <option value={1 * 60 * 1000}>每 1 分钟</option>
-            <option value={3 * 60 * 1000}>每 3 分钟</option>
             <option value={5 * 60 * 1000}>每 5 分钟</option>
             <option value={15 * 60 * 1000}>每 15 分钟</option>
             <option value={30 * 60 * 1000}>每 30 分钟</option>
+            <option value={60 * 60 * 1000}>每 1 小时</option>
           </select>
         </label>
         <label className="check-row">
@@ -411,9 +371,84 @@ export function TokenPoolPanel(props: Props): JSX.Element {
           <thead>
             <tr>
               <th className="accounts-order-col" aria-label="排序"></th>
-              <th>账号</th>
-              <th>5h/7d</th>
-              <th>状态</th>
+              <th>
+                <div className="token-pool-th-control token-pool-account-head-controls">
+                  <span>账号</span>
+                  <select
+                    aria-label="套餐筛选"
+                    title="套餐筛选"
+                    value={planFilter}
+                    onChange={(event) => setPlanFilter(event.target.value as TokenPoolPlanFilter)}
+                  >
+                    {filterOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}（{option.count}）
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label="视图排序"
+                    title="视图排序"
+                    value={sortMode}
+                    onChange={(event) => setSortMode(event.target.value as TokenPoolSortMode)}
+                  >
+                    <option value="manual">手动</option>
+                    <option value="plan">套餐</option>
+                    <option value="available">可用</option>
+                    <option value="remaining">余额</option>
+                    <option value="refreshed">刷新</option>
+                  </select>
+                </div>
+              </th>
+              <th>
+                <div className="token-pool-th-control token-pool-usage-head-controls" data-token-pool-bulk-refresh>
+                  <span>5h/7d</span>
+                  <button
+                    type="button"
+                    className="token-pool-icon-button"
+                    title="批量刷新用量"
+                    aria-label="批量刷新用量"
+                    onClick={() => setBulkRefreshMenuOpen((value) => !value)}
+                  >
+                    ↻
+                  </button>
+                  {bulkRefreshMenuOpen ? (
+                    <div className="token-pool-bulk-refresh-menu">
+                      <label className="token-pool-interval token-pool-bulk-refresh-select">
+                        <select
+                          value={bulkRefreshCategory}
+                          onChange={(event) => {
+                            const nextCategory = event.target.value as TokenPoolRefreshCategory;
+                            setBulkRefreshCategory(nextCategory);
+                            if ((refreshCategoryCounts[nextCategory] ?? 0) > 0) {
+                              props.onRefreshGroup(nextCategory);
+                              setBulkRefreshMenuOpen(false);
+                            }
+                          }}
+                        >
+                          {refreshCategoryOptions.map((option) => (
+                            <option key={option.value} value={option.value} disabled={option.count === 0}>
+                              {option.label}（{option.count}）
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  ) : null}
+                </div>
+              </th>
+              <th>
+                <label className="token-pool-th-toggle" title="只看可用账号">
+                  <span>状态</span>
+                  <input
+                    type="checkbox"
+                    checked={availableOnly}
+                    onChange={(event) => setAvailableOnly(event.target.checked)}
+                    aria-label="只看可用账号"
+                  />
+                  <span>可用</span>
+                </label>
+              </th>
               <th className="accounts-actions-col">操作</th>
             </tr>
           </thead>
@@ -621,6 +656,7 @@ export function TokenPoolPanel(props: Props): JSX.Element {
         </div>
       ) : null}
 
+      {!canReorderCurrentView ? <p className="token-pool-help">当前使用了表头筛选/排序，只影响展示，不会改真实池顺序；拖拽和上移/下移已临时禁用。</p> : null}
       <p className="token-pool-help">说明：筛选和排序只影响当前表格展示，不会改变账号池真实顺序。自动检测会按真实池顺序串行刷新整池账号。</p>
     </section>
   );
