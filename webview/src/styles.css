@@ -736,22 +736,30 @@ td {
   left: 0;
   z-index: 10;
   display: grid;
-  gap: 8px;
-  width: 176px;
-  padding: 8px;
+  gap: 4px;
+  width: 148px;
+  padding: 6px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: color-mix(in srgb, var(--card) 98%, transparent);
   box-shadow: 0 10px 24px color-mix(in srgb, #000 55%, transparent);
 }
 
-.token-pool-bulk-refresh-menu select,
-.token-pool-bulk-refresh-menu button {
+.token-pool-menu-item {
   width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  text-align: left;
 }
 
-.token-pool-bulk-refresh-select {
-  display: block;
+.token-pool-menu-item.active {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
 .token-pool-th-toggle {

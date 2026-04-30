@@ -414,25 +414,22 @@ export function TokenPoolPanel(props: Props): JSX.Element {
                   </button>
                   {bulkRefreshMenuOpen ? (
                     <div className="token-pool-bulk-refresh-menu">
-                      <label className="token-pool-interval token-pool-bulk-refresh-select">
-                        <select
-                          value={bulkRefreshCategory}
-                          onChange={(event) => {
-                            const nextCategory = event.target.value as TokenPoolRefreshCategory;
-                            setBulkRefreshCategory(nextCategory);
-                            if ((refreshCategoryCounts[nextCategory] ?? 0) > 0) {
-                              props.onRefreshGroup(nextCategory);
-                              setBulkRefreshMenuOpen(false);
-                            }
+                      {refreshCategoryOptions.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={option.value === bulkRefreshCategory ? "token-pool-menu-item active" : "token-pool-menu-item"}
+                          disabled={option.count === 0}
+                          onClick={() => {
+                            setBulkRefreshCategory(option.value);
+                            props.onRefreshGroup(option.value);
+                            setBulkRefreshMenuOpen(false);
                           }}
                         >
-                          {refreshCategoryOptions.map((option) => (
-                            <option key={option.value} value={option.value} disabled={option.count === 0}>
-                              {option.label}（{option.count}）
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                          <span>{option.label}</span>
+                          <span>{option.count}</span>
+                        </button>
+                      ))}
                     </div>
                   ) : null}
                 </div>
