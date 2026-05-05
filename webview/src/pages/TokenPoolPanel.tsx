@@ -66,6 +66,22 @@ function getPlanBadge(plan?: string): { label: string; tone: "neutral" | "good" 
   return { label: plan!.trim().toUpperCase(), tone: "caution" };
 }
 
+function getSourceBadge(entry: TokenPoolEntry): { label: string; title: string } | undefined {
+  if (entry.sourceKind === "cliProxy") {
+    return {
+      label: "CLIProxy",
+      title: entry.sourcePath ? `刷新前会先同步 CLIProxy 源文件：${entry.sourcePath}` : "刷新前会先同步 CLIProxy 源文件"
+    };
+  }
+  if (entry.sourceKind === "file") {
+    return {
+      label: "FILE",
+      title: entry.sourcePath ? `刷新前会先同步导入源文件：${entry.sourcePath}` : "刷新前会先同步导入源文件"
+    };
+  }
+  return undefined;
+}
+
 function getPlanCategory(entry: TokenPoolEntry): Exclude<TokenPoolRefreshCategory, "all"> | undefined {
   const normalized = (entry.usage?.planType || entry.planTypeHint || "").trim().toLowerCase();
   if (!normalized) {
@@ -467,6 +483,7 @@ export function TokenPoolPanel(props: Props): JSX.Element {
               const isSwitchBlocked = isManualSwitchBlocked(entry);
               const isDragOver = dragOverEntryId === entry.id && draggingEntryId !== entry.id;
               const planBadge = getPlanBadge(entry.usage?.planType || entry.planTypeHint);
+              const sourceBadge = getSourceBadge(entry);
               return (
                 <tr
                   ref={entry.current ? currentRowRef : undefined}
@@ -533,6 +550,7 @@ export function TokenPoolPanel(props: Props): JSX.Element {
                         {entry.email || entry.accountId}
                       </strong>
                       {planBadge ? <span className={`plan-badge plan-badge-${planBadge.tone}`}>{planBadge.label}</span> : null}
+                      {sourceBadge ? <span className="source-badge" title={sourceBadge.title}>{sourceBadge.label}</span> : null}
                     </div>
                   </td>
                   <td title={buildUsageTooltip(entry)}>

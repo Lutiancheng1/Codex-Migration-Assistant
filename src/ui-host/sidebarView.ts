@@ -14,7 +14,7 @@ export class CodexSidebarViewProvider implements vscode.WebviewViewProvider {
     };
 
     webviewView.webview.html = await renderWebviewHtml(webviewView.webview, this.context.extensionUri);
-    const bridge = bindBridge({ webview: webviewView.webview });
+    const bridge = bindBridge({ webview: webviewView.webview }, this.context);
 
     webviewView.onDidDispose(() => bridge.dispose());
   }

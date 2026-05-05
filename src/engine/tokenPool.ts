@@ -42,6 +42,8 @@ export type TokenPoolEntry = {
   email?: string;
   accountId: string;
   type?: string;
+  sourceKind?: "file" | "cliProxy";
+  sourcePath?: string;
   expired?: string;
   lastRefresh?: string;
   importedAt: string;
@@ -73,10 +75,17 @@ type TokenPoolSecret = {
   expired?: string;
   type?: string;
   planTypeHint?: string;
+  sourcePath?: string;
+  sourceKind?: "file" | "cliProxy";
 };
 
 type TokenPoolEntryMeta = Omit<TokenPoolEntry, "current">;
+type TokenPoolSourceInfo = Pick<TokenPoolSecret, "sourcePath" | "sourceKind">;
 type TokenPoolSecretMap = Record<string, TokenPoolSecret>;
+type TokenPoolDuplicateMatch = {
+  entry: TokenPoolEntryMeta;
+  index: number;
+};
 
 type TokenPoolMetadata = {
   schemaVersion: 1;
@@ -196,6 +205,27 @@ function matchesRefreshCategory(entry: Pick<TokenPoolEntryMeta, "usage" | "planT
   return resolvePlanCategory(entry.usage?.planType || entry.planTypeHint) === category;
 }
 
+function normalizeTokenSourcePath(value?: string): string | undefined {
+  return value ? path.resolve(value) : undefined;
+}
+
+function isSameTokenPoolIdentity(existing: TokenPoolEntryMeta, secret: TokenPoolSecret): boolean {
+  const existingPlan = resolvePlanCategory(existing.usage?.planType || existing.planTypeHint);
+  const incomingPlan = resolvePlanCategory(secret.planTypeHint);
+  if (!existingPlan || !incomingPlan || existingPlan !== incomingPlan) {
+    return false;
+  }
+  const existingEmail = existing.email?.trim().toLowerCase();
+  const incomingEmail = secret.email?.trim().toLowerCase();
+  if (existingEmail && incomingEmail) {
+    return existingEmail === incomingEmail;
+  }
+  if (existing.accountId && secret.accountId && existing.accountId === secret.accountId) {
+    return true;
+  }
+  return false;
+}
+
 function applyRefreshedTokenSecret(secret: TokenPoolSecret, refreshed: CodexTokenRefreshResult): TokenPoolSecret {
   return {
     ...secret,
@@ -215,6 +245,8 @@ function applyRefreshedTokenMeta(meta: TokenPoolEntryMeta, secret: TokenPoolSecr
     ...meta,
     accountId: secret.accountId,
     email: secret.email ?? meta.email,
+    sourceKind: secret.sourceKind ?? meta.sourceKind,
+    sourcePath: secret.sourcePath ?? meta.sourcePath,
     expired: secret.expired,
     lastRefresh: secret.lastRefresh,
     planTypeHint: secret.planTypeHint ?? meta.planTypeHint,
@@ -288,6 +320,12 @@ function normalizeImportedToken(raw: ImportableJson): TokenPoolSecret {
     type,
     planTypeHint
   };
+}
+
+function inferTokenSourceKind(filePath: string): TokenPoolSecret["sourceKind"] {
+  const normalized = filePath.toLowerCase();
+  const base = path.basename(normalized);
+  return normalized.includes(".cli-proxy-api") || base.startsWith("codex-") ? "cliProxy" : "file";
 }
 
 async function readJsonFile(filePath: string): Promise<ImportableJson> {
@@ -570,6 +608,7 @@ class TokenPoolService implements DisposableLike {
     const codexHome = resolveCodexHome(codexHomeOverride);
     const meta = await this.readMeta(codexHome);
     const activeEntryId = await this.detectActiveEntryId(codexHome, meta);
+    const secrets = await this.readSecrets(codexHome);
     return {
       activeEntryId,
       settings: meta.settings,
@@ -577,6 +616,8 @@ class TokenPoolService implements DisposableLike {
       lastAutoSwitchMessage: meta.lastAutoSwitchMessage,
       entries: meta.entries.map((entry) => ({
         ...entry,
+        sourceKind: entry.sourceKind ?? secrets[entry.id]?.sourceKind,
+        sourcePath: entry.sourcePath ?? secrets[entry.id]?.sourcePath,
         current: entry.id === activeEntryId,
         status: normalizeStatus(entry.status)
       }))
@@ -588,23 +629,43 @@ class TokenPoolService implements DisposableLike {
     return meta.entries.some((entry) => entry.id === entryId);
   }
 
-  private findDuplicateEntryIndex(meta: TokenPoolMetadata, secrets: TokenPoolSecretMap, secret: TokenPoolSecret): number {
-    return meta.entries.findIndex((entry) => {
+  private findDuplicateEntryMatches(meta: TokenPoolMetadata, secrets: TokenPoolSecretMap, secret: TokenPoolSecret, source?: TokenPoolSourceInfo): TokenPoolDuplicateMatch[] {
+    const incomingSourcePath = normalizeTokenSourcePath(source?.sourcePath ?? secret.sourcePath);
+    return meta.entries.flatMap((entry, index) => {
       const existing = secrets[entry.id];
       if (!existing) {
-        return false;
+        return [];
       }
-      return (
+      const existingSourcePath = normalizeTokenSourcePath(existing.sourcePath ?? entry.sourcePath);
+      if (incomingSourcePath && existingSourcePath === incomingSourcePath) {
+        return [{ entry, index }];
+      }
+      const exactTokenMatch =
         existing.refreshToken === secret.refreshToken ||
         existing.idToken === secret.idToken ||
-        existing.accessToken === secret.accessToken
-      );
+        existing.accessToken === secret.accessToken;
+      if (exactTokenMatch || isSameTokenPoolIdentity(entry, secret)) {
+        return [{ entry, index }];
+      }
+      return [];
     });
   }
 
-  private async upsertSecret(meta: TokenPoolMetadata, secret: TokenPoolSecret, codexHomeOverride?: string, overrides?: Partial<Pick<TokenPoolEntryMeta, "email" | "type" | "planTypeHint">>): Promise<"imported" | "replaced"> {
+  private async upsertSecret(
+    meta: TokenPoolMetadata,
+    secret: TokenPoolSecret,
+    codexHomeOverride?: string,
+    overrides?: Partial<Pick<TokenPoolEntryMeta, "email" | "type" | "planTypeHint">>,
+    source?: TokenPoolSourceInfo
+  ): Promise<"imported" | "replaced"> {
     const secrets = await this.readSecrets(codexHomeOverride);
-    const duplicateIndex = this.findDuplicateEntryIndex(meta, secrets, secret);
+    const duplicateMatches = this.findDuplicateEntryMatches(meta, secrets, secret, source);
+    const duplicateIndex = duplicateMatches[0]?.index ?? -1;
+    const nextSecret: TokenPoolSecret = {
+      ...secret,
+      sourcePath: normalizeTokenSourcePath(source?.sourcePath ?? secret.sourcePath),
+      sourceKind: source?.sourceKind ?? secret.sourceKind
+    };
     const nextMeta: TokenPoolEntryMeta = {
       id: duplicateIndex >= 0 ? meta.entries[duplicateIndex].id : `${secret.accountId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       email: overrides?.email ?? secret.email,
@@ -615,13 +676,25 @@ class TokenPoolService implements DisposableLike {
       importedAt: duplicateIndex >= 0 ? meta.entries[duplicateIndex].importedAt : nowIso(),
       updatedAt: nowIso(),
       planTypeHint: overrides?.planTypeHint ?? secret.planTypeHint,
+      sourceKind: nextSecret.sourceKind,
+      sourcePath: nextSecret.sourcePath,
       usage: duplicateIndex >= 0 ? meta.entries[duplicateIndex].usage : undefined,
       usageError: duplicateIndex >= 0 ? meta.entries[duplicateIndex].usageError : undefined,
       status: duplicateIndex >= 0 ? meta.entries[duplicateIndex].status : "neverChecked"
     };
-    await this.writeSecret(nextMeta.id, secret, codexHomeOverride);
+    await this.writeSecret(nextMeta.id, nextSecret, codexHomeOverride);
     if (duplicateIndex >= 0) {
-      meta.entries.splice(duplicateIndex, 1, nextMeta);
+      const duplicateIdsToDelete = duplicateMatches.map((match) => match.entry.id).filter((id) => id !== nextMeta.id);
+      meta.entries = meta.entries.filter((entry) => entry.id === nextMeta.id || !duplicateIdsToDelete.includes(entry.id));
+      for (const entryId of duplicateIdsToDelete) {
+        await this.deleteSecret(entryId, codexHomeOverride);
+      }
+      const currentIndex = meta.entries.findIndex((entry) => entry.id === nextMeta.id);
+      if (currentIndex >= 0) {
+        meta.entries.splice(currentIndex, 1, nextMeta);
+      } else {
+        meta.entries.push(nextMeta);
+      }
       return "replaced";
     }
     meta.entries.push(nextMeta);
@@ -635,7 +708,10 @@ class TokenPoolService implements DisposableLike {
     for (const filePath of filePaths) {
       try {
         const parsed = normalizeImportedToken(await readJsonFile(filePath));
-        const result = await this.upsertSecret(meta, parsed, codexHomeOverride);
+        const result = await this.upsertSecret(meta, parsed, codexHomeOverride, undefined, {
+          sourcePath: path.resolve(filePath),
+          sourceKind: inferTokenSourceKind(filePath)
+        });
         summary[result] += 1;
       } catch {
         summary.skipped += 1;
@@ -645,6 +721,28 @@ class TokenPoolService implements DisposableLike {
     await this.writeMeta(meta, codexHomeOverride);
     this.emitLog("info", `账号池导入完成：新增 ${summary.imported}，覆盖 ${summary.replaced}，跳过 ${summary.skipped}。`);
     return this.getSnapshot(codexHomeOverride);
+  }
+
+  private async syncSecretFromSource(entryId: string, secret: TokenPoolSecret, codexHomeOverride?: string): Promise<TokenPoolSecret> {
+    if (!secret.sourcePath) {
+      return secret;
+    }
+    const st = await statSafe(secret.sourcePath);
+    if (!st?.isFile()) {
+      return secret;
+    }
+    try {
+      const parsed = normalizeImportedToken(await readJsonFile(secret.sourcePath));
+      const synced: TokenPoolSecret = {
+        ...parsed,
+        sourcePath: secret.sourcePath,
+        sourceKind: secret.sourceKind ?? inferTokenSourceKind(secret.sourcePath)
+      };
+      await this.writeSecret(entryId, synced, codexHomeOverride);
+      return synced;
+    } catch {
+      return secret;
+    }
   }
 
   async importDirectory(directoryPath: string, codexHomeOverride?: string): Promise<TokenPoolSnapshot> {
@@ -685,9 +783,12 @@ class TokenPoolService implements DisposableLike {
         updatedAt: nowIso()
       };
     }
+    secret = await this.syncSecretFromSource(meta.id, secret, codexHomeOverride);
 
     let nextMeta = meta;
+    nextMeta = applyRefreshedTokenMeta(nextMeta, secret);
     let refreshedBeforeUsage = false;
+    let preflightRefreshError: string | undefined;
     const refreshSecret = async (force: boolean): Promise<boolean> => {
       if (!secret?.refreshToken || (!force && !shouldRefreshCodexTokens(secret.expired))) {
         return false;
@@ -703,7 +804,7 @@ class TokenPoolService implements DisposableLike {
     try {
       refreshedBeforeUsage = await refreshSecret(false);
     } catch (error) {
-      this.emitLog("warn", `账号池条目登录态续期失败，将尝试使用现有 access_token 查询: ${(error as Error).message}`);
+      preflightRefreshError = (error as Error).message;
     }
 
     const codexHome = resolveCodexHome(codexHomeOverride);
@@ -738,7 +839,7 @@ class TokenPoolService implements DisposableLike {
           next.status = inferStatus(next);
           return next;
         } catch (refreshError) {
-          const refreshMessage = (refreshError as Error).message || message;
+          const refreshMessage = (refreshError as Error).message || preflightRefreshError || message;
           return {
             ...nextMeta,
             usageError: refreshMessage,

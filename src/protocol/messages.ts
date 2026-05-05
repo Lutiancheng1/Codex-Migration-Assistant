@@ -54,6 +54,8 @@ export type TokenPoolEntry = {
   email?: string;
   accountId: string;
   type?: string;
+  sourceKind?: "file" | "cliProxy";
+  sourcePath?: string;
   expired?: string;
   lastRefresh?: string;
   importedAt: string;

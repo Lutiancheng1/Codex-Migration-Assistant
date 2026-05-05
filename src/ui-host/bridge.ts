@@ -30,6 +30,8 @@ import { resolveCodexHome } from "../util/path";
 import { getLogger } from "../util/logger";
 import { withSharedWriteLock } from "../util/sharedLock";
 
+const LAST_TOKEN_POOL_IMPORT_DIR_KEY = "codexMigration.tokenPool.lastImportDirectory";
+
 function send(webview: vscode.Webview, message: ResponseMessage): void {
   void webview.postMessage(message);
 }
@@ -548,12 +550,14 @@ async function runActivateProfileRequest(target: WebviewTarget, msg: Extract<Req
   emitTaskLog(target.webview, "warn", "账号已切换。请重启 Codex App 或执行 Reload Window 以加载新账号会话。");
 }
 
-async function importTokenPoolFiles(webview: vscode.Webview, codexHome: string, mode: "single" | "multiple"): Promise<void> {
+async function importTokenPoolFiles(context: vscode.ExtensionContext | undefined, webview: vscode.Webview, codexHome: string, mode: "single" | "multiple"): Promise<void> {
+  const defaultUri = context?.globalState.get<string>(LAST_TOKEN_POOL_IMPORT_DIR_KEY);
   const picked = await vscode.window.showOpenDialog({
     title: mode === "single" ? "选择 token JSON" : "选择多个 token JSON",
     canSelectMany: mode === "multiple",
     canSelectFiles: true,
     canSelectFolders: false,
+    defaultUri: defaultUri ? vscode.Uri.file(defaultUri) : undefined,
     filters: {
       JSON: ["json"]
     }
@@ -561,6 +565,7 @@ async function importTokenPoolFiles(webview: vscode.Webview, codexHome: string, 
   if (!picked || picked.length === 0) {
     return;
   }
+  await context?.globalState.update(LAST_TOKEN_POOL_IMPORT_DIR_KEY, path.dirname(picked[0].fsPath));
   await getTokenPoolService().importFiles(
     picked.map((item) => item.fsPath),
     codexHome
@@ -568,22 +573,25 @@ async function importTokenPoolFiles(webview: vscode.Webview, codexHome: string, 
   emitTaskLog(webview, "info", `账号池已导入 ${picked.length} 个 JSON 文件。`);
 }
 
-async function importTokenPoolDirectory(webview: vscode.Webview, codexHome: string): Promise<void> {
+async function importTokenPoolDirectory(context: vscode.ExtensionContext | undefined, webview: vscode.Webview, codexHome: string): Promise<void> {
+  const defaultUri = context?.globalState.get<string>(LAST_TOKEN_POOL_IMPORT_DIR_KEY);
   const picked = await vscode.window.showOpenDialog({
     title: "选择 token 目录",
     canSelectMany: false,
     canSelectFiles: false,
-    canSelectFolders: true
+    canSelectFolders: true,
+    defaultUri: defaultUri ? vscode.Uri.file(defaultUri) : undefined
   });
   const targetDir = picked?.[0]?.fsPath;
   if (!targetDir) {
     return;
   }
+  await context?.globalState.update(LAST_TOKEN_POOL_IMPORT_DIR_KEY, targetDir);
   await getTokenPoolService().importDirectory(targetDir, codexHome);
   emitTaskLog(webview, "info", `账号池已导入目录中的 JSON：${targetDir}`);
 }
 
-export function bindBridge(target: WebviewTarget): vscode.Disposable {
+export function bindBridge(target: WebviewTarget, context?: vscode.ExtensionContext): vscode.Disposable {
   const tokenPoolService = getTokenPoolService();
   let scheduledSnapshot: NodeJS.Timeout | undefined;
   let preferredCodexHome: string | undefined;
@@ -645,12 +653,12 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
       }
 
       if (msg.type === "IMPORT_TOKEN_POOL_FILES") {
-        await withWriteAccess(undefined, (codexHome) => importTokenPoolFiles(target.webview, codexHome, msg.payload.mode));
+        await withWriteAccess(undefined, (codexHome) => importTokenPoolFiles(context, target.webview, codexHome, msg.payload.mode));
         return;
       }
 
       if (msg.type === "IMPORT_TOKEN_POOL_DIRECTORY") {
-        await withWriteAccess(undefined, (codexHome) => importTokenPoolDirectory(target.webview, codexHome));
+        await withWriteAccess(undefined, (codexHome) => importTokenPoolDirectory(context, target.webview, codexHome));
         return;
       }
 
@@ -1117,7 +1125,9 @@ export function bindBridge(target: WebviewTarget): vscode.Disposable {
         return;
       }
     } catch (err) {
-      const appError = asAppError(err, ErrorCode.Unknown);
+      const rawMessage = err instanceof Error ? err.message : String(err);
+      const fallbackCode = rawMessage.includes("共享数据正在被其它客户端写入") ? ErrorCode.FileLocked : ErrorCode.Unknown;
+      const appError = asAppError(err, fallbackCode);
       if (appError.code === ErrorCode.FileLocked) {
         if (msg.type === "ACTIVATE_PROFILE") {
           pendingActivateAfterKill = msg;
