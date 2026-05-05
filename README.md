@@ -303,6 +303,10 @@ code --install-extension codex-migration-assistant-<version>.vsix
 
 如果使用 Codex / VS Code 兼容环境，也可以在扩展管理页面选择“从 VSIX 安装”。
 
+GitHub Release 地址：
+
+[https://github.com/Lutiancheng1/Codex-Migration-Assistant/releases](https://github.com/Lutiancheng1/Codex-Migration-Assistant/releases)
+
 ## 开发
 
 环境要求：
@@ -342,10 +346,17 @@ npm run package:vsix:node20
 
 ## 发布
 
-当前发布物是 VSIX：
+当前只通过 GitHub Release 分发 VSIX，不发布到 Visual Studio Marketplace。
+
+本地打包：
 
 ```bash
 npm run package:vsix
+```
+
+创建 GitHub Release：
+
+```bash
 git tag v<version>
 git push origin v<version>
 gh release create v<version> codex-migration-assistant-<version>.vsix --title "v<version>" --notes-file RELEASE_NOTES.md

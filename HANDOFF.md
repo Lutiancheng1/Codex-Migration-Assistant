@@ -1,12 +1,12 @@
 # Codex Migration Extension Handoff
 
-最后更新：2026-05-05（已按用户要求移除 Tauri/macOS 独立 app 架构，仓库重新收回为纯扩展主线；账号池 `5h/7d` 列已补 hover 提示并在 README 标明悬浮百分比可查看最近刷新 / 5h 重置 / 7d 重置时间；账号池表已移除“最近刷新”列，并限制为最多显示 6 条后内部滚动，且当前账号会自动滚入可视区；账号池表头集成套餐筛选、视图排序、只看可用和按分类批量刷新；批量刷新菜单已从原生 select 改成按钮式菜单项，当前分类也可重复点击刷新，菜单宽度已收紧为按内容自然撑开；账号池设置已改成“自动检测/用量自动刷新频率”，频率只保留禁用 / 5m / 15m / 30m / 1h；Codex token 刷新已接入 CLIProxyAPI 同款 refresh_token 续期逻辑；账号池导入会记录来源路径，刷新前可同步 CLIProxy / 文件源里的最新 token；重复导入同邮箱同套餐会覆盖并合并历史重复项，多个 Team 邮箱共享 accountId 时不会误合并；无 CLIProxy 用户继续走插件本地托管刷新；refresh_token 预检续期失败但 access_token 查询成功时不再输出 warn 噪音；共享写锁错误现在归类为 E_FILE_LOCKED；README 已重写并补清核心价值、核心架构、数据边界和发布说明；扩展详情页 description 已改成准确描述；执行与操作日志已统一补时间前缀；账号管理区块的“用量自动刷新频率”默认已改为禁用；当前扩展版本 `1.0.20`）
+最后更新：2026-05-05（已修复共享写锁在扩展卸载 / 重载 / 异常退出后残留导致插件不可用的问题：共享锁错误归类为 `E_SHARED_LOCK_BUSY`，不再误触发 `E_FILE_LOCKED` 的目录死锁弹窗；锁文件增加 `updatedAt` 心跳、5 分钟 stale 判定和 `lockId` 安全释放；已放弃 Marketplace 发布路线，当前只通过 GitHub Release 分发本地 VSIX；当前扩展版本 `1.0.21`）
 
 ## 项目快照
 
 - 项目名：`codex-migration-extension`
 - 展示名：`Codex 迁移助手`
-- 当前版本：`1.0.20`
+- 当前版本：`1.0.21`
 - 当前形态：VS Code / Codex Webview 扩展
 - 技术栈：TypeScript、React、VS Code Webview、Node.js 20+
 - 当前定位：面向 Codex 用户的账号切换、数据迁移、备份恢复、会话清理与用量查看
@@ -64,6 +64,23 @@
 这两块现在已经是扩展自身的数据一致性基础，不属于桌面 app UI 架构。
 
 ## 最近仍然有效的重要修复
+
+### 0.0.1 发布路线已回到 GitHub Release / 本地 VSIX
+
+Visual Studio Marketplace 发布流程暂时放弃，当前项目继续按本地 VSIX 分发：
+
+- `package.json` 的 `publisher` 保持本地占位：`local`
+- `private` 保持 `true`
+- 不再写 Marketplace 搜索安装、Marketplace URL 或 `vsce publish` 流程
+- `README.md` 只保留 GitHub Release 下载 VSIX 和本地安装方式
+- GitHub Release 地址：`https://github.com/Lutiancheng1/Codex-Migration-Assistant/releases`
+
+后续如果重新决定上架 Marketplace，再单独恢复正式 publisher / PAT / `vsce publish` 流程。
+
+相关文件：
+
+- `package.json`
+- `README.md`
 
 ### 0.1 账号池已修复同邮箱 free/team 导入互相覆盖
 
@@ -429,21 +446,30 @@ CLIProxyAPI 的 token 并不是“天然永不过期”，而是：
 
 - `src/engine/tokenPool.ts`
 
-### 0.3.8.2 共享写锁错误码已从 E_UNKNOWN 修正为 E_FILE_LOCKED
+### 0.3.8.2 共享写锁错误码已从 E_UNKNOWN / E_FILE_LOCKED 修正为 E_SHARED_LOCK_BUSY
 
-之前共享写锁竞争时，日志会显示：
-
-- `E_UNKNOWN: 共享数据正在被其它客户端写入...`
-
-实际这是锁竞争，不是未知错误。
+之前共享写锁竞争时，bridge 曾被错误地映射为 `E_FILE_LOCKED`。
+这导致它误触了前端处理底层 `.codex` 目录 `EPERM` 死锁时的专用弹窗（ProcessLockDialog），让用户误以为是文件系统锁定。
 
 现在 bridge 会识别这类错误，并归类为：
 
-- `E_FILE_LOCKED`
+- `E_SHARED_LOCK_BUSY`
+
+避免和 `E_FILE_LOCKED`（目录迁移受阻）混淆，此时前端只会正常弹出错误提示，不会要求用户去杀进程。
+
+同时共享锁实现已增强：
+
+- 锁文件写入 `updatedAt` 心跳
+- 正在执行写操作时每 10 秒刷新一次心跳
+- 遇到 PID 已不存在的旧锁会自动移除并重试
+- 遇到 PID 仍存在但锁心跳超过 5 分钟的旧锁，也会视为扩展卸载 / 重载残留锁并自动接管
+- 锁文件增加 `lockId`，释放时只删除自己持有的锁，避免误删后续新锁
 
 相关文件：
 
 - `src/ui-host/bridge.ts`
+- `src/util/sharedLock.ts`
+- `test/shared-lock.test.mjs`
 
 ### 0.3.8.3 账号池已补 CLIProxy / 文件源同步
 

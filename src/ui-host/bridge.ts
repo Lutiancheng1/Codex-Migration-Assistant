@@ -1126,7 +1126,7 @@ export function bindBridge(target: WebviewTarget, context?: vscode.ExtensionCont
       }
     } catch (err) {
       const rawMessage = err instanceof Error ? err.message : String(err);
-      const fallbackCode = rawMessage.includes("共享数据正在被其它客户端写入") ? ErrorCode.FileLocked : ErrorCode.Unknown;
+      const fallbackCode = rawMessage.includes("共享数据正在被其它客户端写入") ? ErrorCode.SharedLockBusy : ErrorCode.Unknown;
       const appError = asAppError(err, fallbackCode);
       if (appError.code === ErrorCode.FileLocked) {
         if (msg.type === "ACTIVATE_PROFILE") {

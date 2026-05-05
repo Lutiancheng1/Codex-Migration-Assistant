@@ -5,6 +5,7 @@ export enum ErrorCode {
   CodexHomeNotFound = "E_CODEX_HOME_NOT_FOUND",
   PermissionDenied = "E_PERMISSION_DENIED",
   FileLocked = "E_FILE_LOCKED",
+  SharedLockBusy = "E_SHARED_LOCK_BUSY",
   InvalidBackupFormat = "E_INVALID_BACKUP_FORMAT"
 }
 
